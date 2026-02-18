@@ -37,16 +37,18 @@ class WebSearchSkill(BaseSkill):
         if not query:
             return self._error("What would you like me to search for?")
 
+        sender_id = ctx.message.sender_id
+
         if not settings.SEARCH_API_KEY:
             # Fall back to LLM knowledge
-            return await self._llm_answer(query)
+            return await self._llm_answer(query, sender_id=sender_id)
 
         results = await self._google_search(query)
         if not results:
-            return await self._llm_answer(query)
+            return await self._llm_answer(query, sender_id=sender_id)
 
         # Summarize results with LLM
-        return await self._summarize_results(query, results)
+        return await self._summarize_results(query, results, sender_id=sender_id)
 
     async def _google_search(self, query: str) -> list[dict[str, Any]]:
         """Search using Google Custom Search API."""
@@ -76,7 +78,7 @@ class WebSearchSkill(BaseSkill):
             return []
 
     async def _summarize_results(
-        self, query: str, results: list[dict[str, Any]]
+        self, query: str, results: list[dict[str, Any]], *, sender_id: str | None = None
     ) -> SkillResponse:
         """Use LLM to summarize search results."""
         results_text = "\n\n".join(
@@ -96,17 +98,19 @@ Provide a concise, informative answer based on these results. Cite sources where
             result = await self.inference.generate(
                 prompt=prompt,
                 system="Summarize search results concisely. Cite sources with URLs.",
+                sender_id=sender_id,
             )
             return self._reply(result["text"])
         except Exception as e:
             # Fall back to raw results
             return self._reply(results_text)
 
-    async def _llm_answer(self, query: str) -> SkillResponse:
+    async def _llm_answer(self, query: str, *, sender_id: str | None = None) -> SkillResponse:
         """Fall back to LLM knowledge when search API unavailable."""
         result = await self.inference.generate(
             prompt=f"Answer this question concisely: {query}",
             system="You are Jarvis. Answer questions directly and concisely. If you're not sure, say so.",
+            sender_id=sender_id,
         )
         text = result["text"]
         if not settings.SEARCH_API_KEY:
