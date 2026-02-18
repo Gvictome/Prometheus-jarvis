@@ -29,7 +29,12 @@ class Settings:
     OLLAMA_MODEL: str = _env("OLLAMA_MODEL", "qwen2.5:3b")
     OLLAMA_EMBED_MODEL: str = _env("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
-    # ── Claude (cloud inference) ──────────────────────────
+    # ── OpenRouter (cloud inference — Athena) ───────────────
+    OPENROUTER_API_KEY: str | None = _env("OPENROUTER_API_KEY")
+    OPENROUTER_MODEL: str = _env("OPENROUTER_MODEL", "google/gemma-3-27b-it:free")
+    OPENROUTER_MAX_TOKENS: int = _env("OPENROUTER_MAX_TOKENS", 4096, int)
+
+    # ── Claude (legacy / fallback) ────────────────────────
     ANTHROPIC_API_KEY: str | None = _env("ANTHROPIC_API_KEY")
     CLAUDE_MODEL: str = _env("CLAUDE_MODEL", "claude-sonnet-4-20250514")
     CLAUDE_MAX_TOKENS: int = _env("CLAUDE_MAX_TOKENS", 4096, int)
@@ -54,11 +59,17 @@ class Settings:
     NOTION_NOTES_DB: str | None = _env("NOTION_NOTES_DB")
     NOTION_DAILY_PARENT_PAGE: str | None = _env("NOTION_DAILY_PARENT_PAGE")
 
+    GOOGLE_DRIVE_CREDENTIALS_JSON: str | None = _env("GOOGLE_DRIVE_CREDENTIALS_JSON")
+    GOOGLE_DRIVE_DEFAULT_PARENT_ID: str | None = _env("GOOGLE_DRIVE_DEFAULT_PARENT_ID")
+
     HOME_ASSISTANT_URL: str | None = _env("HOME_ASSISTANT_URL")
     HOME_ASSISTANT_TOKEN: str | None = _env("HOME_ASSISTANT_TOKEN")
 
     SEARCH_API_KEY: str | None = _env("SEARCH_API_KEY")
     SEARCH_ENGINE_ID: str | None = _env("SEARCH_ENGINE_ID")
+
+    # ── Agent Config ─────────────────────────────────────
+    AGENTS_CONFIG_PATH: str = _env("AGENTS_CONFIG_PATH", "/app/agents.json")
 
     # ── Redis ────────────────────────────────────────────
     REDIS_URL: str = _env("REDIS_URL", "redis://redis:6379/0")

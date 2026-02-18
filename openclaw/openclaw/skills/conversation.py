@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from openclaw.gateway.schemas import SkillContext, SkillResponse
 from openclaw.skills.base import BaseSkill
 
 logger = logging.getLogger(__name__)
+
+_MAX_TOOL_ROUNDS = 5
 
 SYSTEM_PROMPT = """You are Jarvis, a highly capable AI personal assistant. You are helpful, \
 concise, and proactive. You speak naturally and adapt your tone to the context — professional \
@@ -46,18 +48,55 @@ class ConversationSkill(BaseSkill):
         system = SYSTEM_PROMPT.format(memory_context=memory_section)
 
         # Build chat messages from history + current message
-        messages = []
+        messages: list[dict[str, Any]] = []
         for msg in ctx.conversation_history:
             messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": ctx.message.content})
 
+        # Collect tool schemas from the registry (if any skills support tool calling)
+        tools: list[dict[str, Any]] | None = None
+        if self.registry is not None:
+            schemas = self.registry.get_tools_schema()
+            if schemas:
+                tools = schemas
+
         try:
-            result = await self.inference.chat(
-                messages=messages,
-                system=system,
-            )
+            result: dict[str, Any] = {}
+            for _ in range(_MAX_TOOL_ROUNDS):
+                result = await self.inference.chat(
+                    messages=messages,
+                    system=system,
+                    sender_id=ctx.message.sender_id,
+                    tools=tools,
+                )
+
+                tool_calls = result.get("tool_calls")
+                if not tool_calls or self.registry is None:
+                    break
+
+                # Append the assistant's tool-call turn to the message history
+                messages.append(
+                    result.get("raw_message")
+                    or {"role": "assistant", "content": result.get("text") or None, "tool_calls": tool_calls}
+                )
+
+                # Execute each tool and feed results back
+                for tc in tool_calls:
+                    fn = tc.get("function", {})
+                    tool_name = fn.get("name", "")
+                    args_json = fn.get("arguments", "{}")
+                    call_id = tc.get("id", "")
+
+                    logger.info("Athena invoked tool: %s args=%s", tool_name, args_json)
+                    tool_result = await self.registry.dispatch_tool_call(
+                        tool_name, args_json, user_tier=ctx.user_tier
+                    )
+                    messages.append(
+                        {"role": "tool", "tool_call_id": call_id, "content": tool_result}
+                    )
+
             return self._reply(
-                result["text"],
+                result.get("text", ""),
                 metadata={
                     "provider": result.get("provider"),
                     "model": result.get("model"),

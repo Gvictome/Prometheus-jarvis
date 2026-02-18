@@ -1,0 +1,47 @@
+{
+    "agents": {
+        "defaults": {
+            "model": {
+                "agent-admin": {
+                    "primary": "openrouter/anthropic/claude-3-haiku",
+                    "fallbacks": [
+                        "openrouter/anthropic/claude-opus-4.1",
+                        "openrouter/z-ai/glm-4.5-air:free"
+                    ]
+                },
+                "agent-dymani": {
+                    "primary": "openrouter/qwen/qwen3-coder:free",
+                    "fallbacks": [
+                        "openrouter/anthropic/claude-opus-4.1",
+                        "openrouter/anthropic/claude-3-haiku",
+                        "openrouter/z-ai/glm-4.5-air:free"
+                    ]
+                },
+                "agent-kendall": {
+                    "primary": "openrouter/qwen/qwen3-coder:free",
+                    "fallbacks": [
+                        "openrouter/anthropic/claude-opus-4.1",
+                        "openrouter/anthropic/claude-3-haiku",
+                        "openrouter/z-ai/glm-4.5-air:free"
+                    ]
+                },
+                "agent-christian": {
+                    "primary": "openrouter/qwen/qwen3-coder:free",
+                    "fallbacks": [
+                        "openrouter/anthropic/claude-opus-4.1",
+                        "openrouter/anthropic/claude-3-haiku",
+                        "openrouter/z-ai/glm-4.5-air:free"
+                    ]
+                }
+            }
+        }
+    },
+    "routing": {
+        "bindings": [
+            { "from": ["2074737097"], "to": "agent-admin" },
+            { "from": ["DYMANI_ID"], "to": "agent-dymani" },
+            { "from": ["KENDALL_ID"], "to": "agent-kendall" },
+            { "from": ["CHRISTIAN_ID"], "to": "agent-christian" }
+        ]
+    }
+}

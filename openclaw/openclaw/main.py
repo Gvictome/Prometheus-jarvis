@@ -68,6 +68,24 @@ def _register_skills(registry: SkillRegistry):
     except ImportError:
         logger.debug("security_monitor skill not available")
 
+    try:
+        from openclaw.overseer.skill import OverseerSkill
+        registry.register(OverseerSkill)
+    except ImportError:
+        logger.debug("overseer skill not available")
+
+    try:
+        from openclaw.skills.ssh_hardening import SSHHardeningSkill
+        registry.register(SSHHardeningSkill)
+    except ImportError:
+        logger.debug("ssh_hardening skill not available")
+
+    try:
+        from openclaw.skills.google_drive import GoogleDriveSkill
+        registry.register(GoogleDriveSkill)
+    except ImportError:
+        logger.debug("google_drive skill not available")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -81,9 +99,30 @@ async def lifespan(app: FastAPI):
     gateway = GatewayRouter(store, inference, registry)
     logger.info("OpenClaw ready. Skills: %s", registry.skill_names)
 
+    # Wire overseer into SSH hardening skill
+    overseer_skill = registry.get("overseer")
+    ssh_skill = registry.get("ssh_hardening")
+    if overseer_skill and ssh_skill:
+        ssh_skill.set_overseer(overseer_skill.overseer)
+        logger.info("SSH hardening skill wired to overseer")
+
+    # Start Overseer scheduler if the overseer skill is registered
+    overseer_scheduler = None
+    if overseer_skill:
+        from openclaw.overseer.scheduler import OverseerScheduler
+        overseer_scheduler = OverseerScheduler(
+            overseer=overseer_skill.overseer,
+            store=store,
+            gateway=gateway,
+        )
+        overseer_scheduler.start()
+        logger.info("Overseer scheduler started")
+
     yield
 
     logger.info("Shutting down OpenClaw...")
+    if overseer_scheduler:
+        overseer_scheduler.stop()
     if store:
         store.close()
 
@@ -158,8 +197,8 @@ async def health():
         except Exception:
             services["ollama"] = "error"
 
-        # Check Claude availability
-        services["claude"] = "ok" if gateway.inference.claude.is_available() else "unconfigured"
+        # Check OpenRouter availability
+        services["openrouter"] = "ok" if gateway.inference.openrouter.is_available() else "unconfigured"
 
         # Budget status
         budget = gateway.inference.cost_tracker.get_budget_status()

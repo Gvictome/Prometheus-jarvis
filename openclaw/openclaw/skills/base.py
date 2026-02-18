@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from openclaw.gateway.schemas import SkillContext, SkillResponse
 from openclaw.inference.router import InferenceRouter
 from openclaw.memory.store import MemoryStore
+
+if TYPE_CHECKING:
+    from openclaw.skills.registry import SkillRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +28,8 @@ class BaseSkill(ABC):
     def __init__(self, store: MemoryStore, inference: InferenceRouter):
         self.store = store
         self.inference = inference
+        # Populated by SkillRegistry.register() to enable cross-skill tool dispatch
+        self.registry: SkillRegistry | None = None
 
     @abstractmethod
     async def execute(self, ctx: SkillContext) -> SkillResponse:
@@ -38,6 +43,21 @@ class BaseSkill(ABC):
         Default returns 0.0 (rely on intent classifier).
         """
         return 0.0
+
+    @classmethod
+    def get_tool_schema(cls) -> dict[str, Any] | None:
+        """Return an OpenAI-compatible tool schema, or None if not tool-callable.
+
+        Override in subclasses that support function/tool calling.
+        """
+        return None
+
+    async def execute_tool(self, action: str, **kwargs: Any) -> str:
+        """Execute a specific action from a tool call and return plain text.
+
+        Override in subclasses that implement ``get_tool_schema()``.
+        """
+        raise NotImplementedError(f"{self.name} does not support tool calling")
 
     def _error(self, msg: str) -> SkillResponse:
         """Helper to create error responses."""

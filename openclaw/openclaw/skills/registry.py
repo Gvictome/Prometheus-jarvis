@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -24,6 +25,7 @@ class SkillRegistry:
     def register(self, skill_class: type[BaseSkill]) -> BaseSkill:
         """Instantiate and register a skill class."""
         instance = skill_class(store=self.store, inference=self.inference)
+        instance.registry = self  # back-reference for cross-skill tool dispatch
         self._skills[instance.name] = instance
         logger.info("Registered skill: %s", instance.name)
         return instance
@@ -64,6 +66,39 @@ class SkillRegistry:
                 logger.exception("Error in %s.can_handle", skill.name)
 
         return best
+
+    def get_tools_schema(self) -> list[dict[str, Any]]:
+        """Return OpenAI-compatible tool schemas for all tool-callable skills."""
+        schemas = []
+        for skill in self._skills.values():
+            schema = skill.__class__.get_tool_schema()
+            if schema is not None:
+                schemas.append(schema)
+        return schemas
+
+    async def dispatch_tool_call(
+        self,
+        tool_name: str,
+        args_json: str | dict[str, Any],
+        user_tier: int = 0,
+    ) -> str:
+        """Execute a skill tool call and return the plain text result."""
+        skill = self.get(tool_name)
+        if skill is None:
+            return f"Tool '{tool_name}' not found."
+        if user_tier < skill.min_tier:
+            return f"Insufficient access tier for tool '{tool_name}'."
+        try:
+            kwargs: dict[str, Any] = (
+                json.loads(args_json) if isinstance(args_json, str) else dict(args_json)
+            )
+            action = kwargs.pop("action", "")
+            return await skill.execute_tool(action, **kwargs)
+        except NotImplementedError:
+            return f"Skill '{tool_name}' does not support tool calling."
+        except Exception as exc:
+            logger.exception("Tool call dispatch failed for %s", tool_name)
+            return f"Error executing {tool_name}: {exc}"
 
     @property
     def skill_names(self) -> list[str]:

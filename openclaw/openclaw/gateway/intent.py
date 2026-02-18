@@ -48,10 +48,32 @@ _REGEX_PATTERNS: dict[str, list[tuple[str, list[str]]]] = {
         (r"\bfail2ban\s*(status|report)\b", []),
         (r"\bsuspicious\s*(activity|connections?|login)\b", []),
     ],
+    "ssh_hardening": [
+        (r"\b(ssh|sshd)\s*(harden|hardening|security|audit)\b", []),
+        (r"\bharden\s*(ssh|sshd|firewall)\b", ["target"]),
+        (r"\b(firewall|ufw|iptables)\s*(harden|hardening|setup)\b", []),
+        (r"\bssh\s*(tunnel|config|settings?)\s*(harden|secure|check)\b", []),
+    ],
+    "overseer": [
+        (r"\boverseer\s+(status|audit|report|start|stop|pause|pending|approve|reject|policy|config)\b", ["action"]),
+        (r"\boverseer\s+keyvault\b", []),
+        (r"\boverseer\b", []),
+        (r"\b(keyvault|key\s*vault)\s+(list|get|show|add|remove)\b", ["_", "action"]),
+        (r"\bapi\s*keys?\b", []),
+        (r"\bpending\s+approval", []),
+    ],
     "memory": [
         (r"\bremember\s+(that\s+)?(.+)", ["_", "content"]),
         (r"\bwhat do you (know|remember) about\s+(.+)", ["_", "query"]),
         (r"\bforget\s+(about\s+)?(.+)", ["_", "target"]),
+    ],
+    "google_drive": [
+        (r"\bcreate\s+(a\s+)?(google\s+drive\s+)?folder\s+(?:called|named)?\s*(.+)", ["_", "_", "name"]),
+        (r"\b(google\s+drive|drive)\s+(?:create|make)\s+(?:folder|directory)\s+(.+)", ["_", "name"]),
+        (r"\b(?:list|show|ls)\s+(?:my\s+)?(?:google\s+drive|drive)\s*(?:files?|folders?)?\b", []),
+        (r"\b(?:upload|save|put)\s+(.+?)\s+(?:to|in)\s+(?:google\s+drive|drive)\b", ["name"]),
+        (r"\bgoogle\s+drive\s+(?:upload|save)\s+(.+)", ["name"]),
+        (r"\bgoogle\s+drive\b", []),
     ],
 }
 
@@ -62,6 +84,9 @@ _KEYWORD_MAP: dict[str, list[str]] = {
     "web_search": ["search", "look up", "find out", "what is", "who is", "when did"],
     "smart_home": ["light", "switch", "temperature", "thermostat", "door", "camera"],
     "security_monitor": ["security", "firewall", "attack", "breach", "vulnerability"],
+    "ssh_hardening": ["ssh hardening", "sshd config", "firewall hardening", "ssh tunnel", "harden ssh"],
+    "overseer": ["overseer", "security agent", "audit report", "approval", "security protocol", "keyvault", "api key"],
+    "google_drive": ["google drive", "drive folder", "gdrive", "create folder", "upload to drive"],
 }
 
 
