@@ -31,7 +31,7 @@ _REGEX_PATTERNS: dict[str, list[tuple[str, list[str]]]] = {
     ],
     "web_search": [
         (r"\bsearch\s+(for\s+)?(.+)", ["_", "query"]),
-        (r"\bgoogle\s+(.+)", ["query"]),
+        (r"\bgoogle\s+(?!drive\b)(.+)", ["query"]),
         (r"\blook\s*up\s+(.+)", ["query"]),
         (r"\bfind\s+(info|information)\s+(about|on)\s+(.+)", ["_", "_", "query"]),
     ],
