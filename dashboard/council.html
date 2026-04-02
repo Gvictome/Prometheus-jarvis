@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prometheus — Council Chamber</title>
+  <link rel="stylesheet" href="static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body>
+  <nav>
+    <span class="brand">Prometheus</span>
+    <div class="links">
+      <a href="index.html">Command Center</a>
+      <a href="signals.html">Signals</a>
+      <a href="politics.html">Politics</a>
+      <a href="odds.html">Odds</a>
+      <a href="council.html" class="active">Council</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <h1>Council Chamber</h1>
+
+    <div class="grid-aside">
+      <!-- LEFT: Chat interface -->
+      <div>
+        <div class="chat-panel">
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-message council">
+              <div class="verdict-header">Council of AI Agents</div>
+              Ask me to analyze any market, bet, or investment question. Seven specialist agents will debate and deliver a consensus verdict.<br><br>
+              <em>Examples: "analyze Lakers -4.5", "analyze DKNG earnings this week", "analyze Fed rate impact on casino stocks"</em>
+            </div>
+          </div>
+          <div class="chat-input-row">
+            <input type="text" id="chat-input" placeholder="analyze..." onkeydown="if(event.key==='Enter')submitAnalysis()">
+            <button class="btn btn-primary" onclick="submitAnalysis()" id="submit-btn">Analyze</button>
+          </div>
+        </div>
+
+        <!-- Debate History -->
+        <h2 style="margin-top:1.25rem">Debate History</h2>
+        <div id="debate-history"><div class="empty-state loading">Loading...</div></div>
+      </div>
+
+      <!-- RIGHT: Radar + Gauge + Agent Cards -->
+      <div>
+        <!-- Consensus Gauge -->
+        <div class="chart-container">
+          <div class="chart-title">Consensus</div>
+          <div id="chart-consensus" class="chart-inner chart-sm"></div>
+          <div class="gauge-wrap">
+            <div class="gauge-label" id="verdict-label">--</div>
+            <div class="gauge-sub" id="verdict-conf">--</div>
+          </div>
+        </div>
+
+        <!-- Radar Chart (7 axes) -->
+        <div class="chart-container">
+          <div class="chart-title">Agent Confidence Radar</div>
+          <div id="chart-radar" class="chart-inner chart-md"></div>
+        </div>
+
+        <!-- Agent Cards -->
+        <div class="chart-title" style="margin-bottom:0.5rem">Agent Opinions</div>
+        <div class="agent-grid" id="agent-cards">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="static/js/utils.js"></script>
+  <script src="static/js/api.js"></script>
+  <script src="static/js/charts.js"></script>
+  <script>
+    const AGENT_DISPLAY = {
+      bull: 'Bull', bear: 'Bear', indicator: 'Indicator',
+      risk: 'Risk', sentiment: 'Sentiment', political: 'Political', contrarian: 'Contrarian',
+    };
+
+    let consensusChart = null;
+    let radarChart = null;
+
+    async function submitAnalysis() {
+      const input = document.getElementById('chat-input');
+      const topic = input.value.trim();
+      if (!topic) return;
+
+      const submitBtn = document.getElementById('submit-btn');
+      submitBtn.disabled = true;
+      input.value = '';
+
+      // Add user message
+      appendMessage('user', topic);
+
+      // Add loading indicator
+      const loadId = 'load-' + Date.now();
+      appendMessage('council', '<span class="spinner"></span> Seven agents are deliberating...', loadId);
+
+      try {
+        const data = await API.council.analyze(topic);
+        // Remove loading message
+        const loadEl = document.getElementById(loadId);
+        if (loadEl) loadEl.remove();
+
+        // Render result in chat
+        appendCouncilVerdict(data);
+
+        // Update sidebar charts
+        renderConsensusGauge(data);
+        renderRadarChart(data.agent_opinions || []);
+        renderAgentCards(data.agent_opinions || []);
+
+        // Refresh history
+        loadHistory();
+      } catch (e) {
+        const loadEl = document.getElementById(loadId);
+        if (loadEl) loadEl.remove();
+        appendMessage('council', `<span class="text-red">Analysis failed: ${e.message}</span>`);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    }
+
+    function appendMessage(role, html, id) {
+      const msgs = document.getElementById('chat-messages');
+      const div = document.createElement('div');
+      div.className = `chat-message ${role}`;
+      if (id) div.id = id;
+      div.innerHTML = html;
+      msgs.appendChild(div);
+      msgs.scrollTop = msgs.scrollHeight;
+      return div;
+    }
+
+    function appendCouncilVerdict(data) {
+      const verdictColor = {
+        strong_buy: 'var(--green)', buy: '#65d06e',
+        neutral: 'var(--text-muted)',
+        sell: '#e07060', strong_sell: 'var(--red)',
+      }[data.consensus] || 'var(--text)';
+
+      const bullBar = '|'.repeat(Math.round((data.bull_score || 0) * 10));
+      const bearBar = '|'.repeat(Math.round((data.bear_score || 0) * 10));
+
+      const html = `
+        <div class="verdict-header" style="color:${verdictColor}">
+          <span class="verdict-badge verdict-${data.consensus}">${(data.consensus || '').replace('_', ' ').toUpperCase()}</span>
+          &nbsp; Debate #${data.debate_id} &bull; ${Math.round((data.confidence || 0) * 100)}% confidence
+        </div>
+        <div style="margin:0.5rem 0;font-size:0.85rem;line-height:1.5">${data.summary || ''}</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);font-family:monospace">
+          Bull [${bullBar.padEnd(10, ' ')}] ${(data.bull_score || 0).toFixed(2)}<br>
+          Bear [${bearBar.padEnd(10, ' ')}] ${(data.bear_score || 0).toFixed(2)}
+        </div>
+        <div class="msg-meta">Debate #${data.debate_id}</div>`;
+      appendMessage('council', html);
+    }
+
+    function renderConsensusGauge(data) {
+      if (!consensusChart) {
+        consensusChart = initChart('chart-consensus');
+      }
+      if (!consensusChart) return;
+
+      const pct = Math.round((data.confidence || 0) * 100);
+      const verdictColor = {
+        strong_buy: '#3fb950', buy: '#65d06e',
+        neutral: '#8b949e',
+        sell: '#e07060', strong_sell: '#f85149',
+      }[data.consensus] || '#8b949e';
+
+      consensusChart.setOption({
+        series: [{
+          type: 'gauge',
+          min: 0, max: 100,
+          progress: { show: true, itemStyle: { color: verdictColor }, width: 10 },
+          axisLine: { lineStyle: { color: [[1, '#21262d']], width: 10 } },
+          axisTick: { show: false },
+          splitLine: { show: false },
+          axisLabel: { show: false },
+          pointer: { show: false },
+          detail: { valueAnimation: true, formatter: '{value}%', color: verdictColor, fontSize: 18, fontWeight: 700, offsetCenter: [0, 0] },
+          data: [{ value: pct }],
+        }],
+      });
+
+      document.getElementById('verdict-label').textContent = (data.consensus || '').replace('_', ' ').toUpperCase();
+      document.getElementById('verdict-label').style.color = verdictColor;
+      document.getElementById('verdict-conf').textContent = `${pct}% confidence`;
+    }
+
+    function renderRadarChart(opinions) {
+      if (!radarChart) {
+        radarChart = initChart('chart-radar');
+      }
+      if (!radarChart || !opinions.length) return;
+
+      const indicators = opinions.map(op => ({ name: AGENT_DISPLAY[op.agent_name] || op.agent_name, max: 1 }));
+      const values = opinions.map(op => op.confidence || 0);
+
+      radarChart.setOption({
+        radar: {
+          indicator: indicators,
+          center: ['50%', '50%'],
+          radius: '70%',
+          axisLine: { lineStyle: { color: '#30363d' } },
+          splitLine: { lineStyle: { color: '#21262d' } },
+          splitArea: { areaStyle: { color: ['rgba(88,166,255,0.02)', 'rgba(88,166,255,0.05)'] } },
+          name: { color: '#8b949e', fontSize: 11 },
+        },
+        series: [{
+          type: 'radar',
+          data: [{
+            value: values,
+            name: 'Confidence',
+            areaStyle: { color: 'rgba(88,166,255,0.1)' },
+            lineStyle: { color: '#58a6ff', width: 2 },
+            itemStyle: { color: '#58a6ff' },
+          }],
+        }],
+      });
+    }
+
+    function renderAgentCards(opinions) {
+      const container = document.getElementById('agent-cards');
+      if (!opinions.length) {
+        container.innerHTML = '<div class="empty-state">Run an analysis to see agent opinions.</div>';
+        return;
+      }
+      container.innerHTML = opinions.map((op, i) => {
+        const factors = (op.key_factors || []).slice(0, 3).map(f => `<span class="factor-chip">${f}</span>`).join('');
+        return `
+          <div class="agent-card" id="agent-${i}">
+            <div class="agent-name">${AGENT_DISPLAY[op.agent_name] || op.agent_name}</div>
+            <div class="agent-stance stance-${op.stance}">${(op.stance || 'neutral').replace('_', ' ')}</div>
+            <div class="agent-confidence">${Math.round((op.confidence || 0) * 100)}% confidence</div>
+            <div class="agent-reasoning">${op.reasoning || ''}</div>
+            ${factors ? `<div class="agent-factors">${factors}</div>` : ''}
+          </div>`;
+      }).join('');
+
+      // Stagger animation
+      opinions.forEach((_, i) => {
+        setTimeout(() => {
+          const el = document.getElementById(`agent-${i}`);
+          if (el) el.classList.add('visible');
+        }, i * 80);
+      });
+    }
+
+    async function loadHistory() {
+      const el = document.getElementById('debate-history');
+      try {
+        const data = await API.council.history(10);
+        const debates = data.debates || [];
+        if (!debates.length) {
+          el.innerHTML = '<div class="empty-state">No debates yet.</div>';
+          return;
+        }
+        el.innerHTML = debates.map(d => {
+          const verdictColor = {
+            strong_buy: 'var(--green)', buy: '#65d06e',
+            neutral: 'var(--text-muted)',
+            sell: '#e07060', strong_sell: 'var(--red)',
+          }[d.consensus] || 'var(--text-muted)';
+          return `
+            <div class="debate-item" onclick="loadDebate(${d.id})">
+              <span class="debate-id">#${d.id}</span>
+              <span class="debate-topic">${d.topic || '--'}</span>
+              <span class="verdict-badge verdict-${d.consensus}" style="font-size:0.65rem">${(d.consensus || '').replace('_', ' ')}</span>
+              <span class="debate-date">${(d.created_at || '').slice(0, 10)}</span>
+            </div>`;
+        }).join('');
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state text-muted">Could not load history: ${e.message}</div>`;
+      }
+    }
+
+    async function loadDebate(id) {
+      try {
+        const data = await API.council.debate(id);
+        renderConsensusGauge(data);
+        renderRadarChart(data.opinions || []);
+        renderAgentCards(data.opinions || []);
+        appendCouncilVerdict({ ...data, agent_opinions: data.opinions || [] });
+      } catch (e) {
+        console.error('loadDebate failed', e);
+      }
+    }
+
+    // Initialize empty charts
+    consensusChart = initChart('chart-consensus');
+    if (consensusChart) {
+      consensusChart.setOption({ title: { text: 'Run an analysis', left: 'center', top: 'middle', textStyle: { color: '#8b949e', fontSize: 12 } } });
+    }
+    radarChart = initChart('chart-radar');
+    if (radarChart) {
+      radarChart.setOption({ title: { text: 'Agent radar will appear here', left: 'center', top: 'middle', textStyle: { color: '#8b949e', fontSize: 12 } } });
+    }
+
+    // Initialize empty agent cards
+    document.getElementById('agent-cards').innerHTML = `
+      ${['Bull','Bear','Indicator','Risk','Sentiment','Political','Contrarian'].map((name, i) =>
+        `<div class="agent-card" id="agent-init-${i}" style="opacity:0.3">
+          <div class="agent-name">${name}</div>
+          <div class="agent-stance stance-neutral">waiting...</div>
+        </div>`
+      ).join('')}`;
+
+    loadHistory();
+  </script>
+</body>
+</html>

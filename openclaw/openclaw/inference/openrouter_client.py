@@ -68,13 +68,22 @@ class OpenRouterClient:
         choice = data["choices"][0]["message"]
         usage = data.get("usage", {})
 
+        # OpenRouter may return cost in usage.cost (docs vary by model/tier).
+        # Parse it if present; otherwise fall back to 0.0 for free-tier models.
+        cost_usd: float = 0.0
+        if "cost" in usage:
+            try:
+                cost_usd = float(usage["cost"])
+            except (TypeError, ValueError):
+                pass
+
         result: dict[str, Any] = {
             "text": choice.get("content") or "",
             "model": self.model,
             "provider": "openrouter",
             "input_tokens": usage.get("prompt_tokens", 0),
             "output_tokens": usage.get("completion_tokens", 0),
-            "cost_usd": 0.0,  # free tier
+            "cost_usd": cost_usd,
         }
         if choice.get("tool_calls"):
             result["tool_calls"] = choice["tool_calls"]

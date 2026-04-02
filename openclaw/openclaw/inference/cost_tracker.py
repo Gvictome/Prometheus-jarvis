@@ -17,23 +17,33 @@ class CostTracker:
         self.monthly_budget = settings.MONTHLY_BUDGET_USD
 
     def record(self, result: dict[str, Any]):
-        """Record an inference call's cost."""
-        cost = result.get("cost_usd", 0.0)
-        if cost <= 0:
-            return
+        """Record an inference call's cost and token usage.
 
+        Always logs token counts even when cost_usd is 0.0 (e.g. free-tier
+        OpenRouter models) so budget utilisation reporting is accurate and
+        token-based cost estimation can be applied later.
+        """
+        cost = result.get("cost_usd", 0.0)
+        input_tokens = result.get("input_tokens", 0)
+        output_tokens = result.get("output_tokens", 0)
+        provider = result.get("provider", "unknown")
+        model = result.get("model", "unknown")
+
+        # Always persist the record — even free-tier calls have token value
         self.store.log_cost(
-            provider=result.get("provider", "unknown"),
-            model=result.get("model", "unknown"),
-            input_tokens=result.get("input_tokens", 0),
-            output_tokens=result.get("output_tokens", 0),
+            provider=provider,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             cost_usd=cost,
         )
         logger.debug(
-            "Cost recorded: $%.6f (%s/%s)",
+            "Inference recorded: $%.6f | %d+%d tokens (%s/%s)",
             cost,
-            result.get("provider"),
-            result.get("model"),
+            input_tokens,
+            output_tokens,
+            provider,
+            model,
         )
 
     def get_monthly_spend(self) -> float:

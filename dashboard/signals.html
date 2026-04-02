@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prometheus — Sports Signals</title>
+  <link rel="stylesheet" href="static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body>
+  <nav>
+    <span class="brand">Prometheus</span>
+    <div class="links">
+      <a href="index.html">Command Center</a>
+      <a href="signals.html" class="active">Signals</a>
+      <a href="politics.html">Politics</a>
+      <a href="odds.html">Odds</a>
+      <a href="council.html">Council</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <h1>Sports Signals</h1>
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi-card"><span class="kpi-label">Pending</span><span class="kpi-value" id="kpi-pending">--</span></div>
+      <div class="kpi-card kpi-bull"><span class="kpi-label">Overall Win Rate</span><span class="kpi-value" id="kpi-wr">--</span></div>
+      <div class="kpi-card"><span class="kpi-label">Today's Signals</span><span class="kpi-value" id="kpi-today">--</span></div>
+      <div class="kpi-card"><span class="kpi-label">Sources Tracked</span><span class="kpi-value" id="kpi-sources">--</span></div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Source Win Rates Bar -->
+      <div class="chart-container">
+        <div class="chart-title">Source Win Rates</div>
+        <div id="chart-sources" class="chart-inner chart-md"></div>
+      </div>
+
+      <!-- Sport x Market Heatmap -->
+      <div class="chart-container">
+        <div class="chart-title">Pending by Market</div>
+        <div id="chart-markets" class="chart-inner chart-md"></div>
+      </div>
+    </div>
+
+    <!-- Picks Table -->
+    <h2>Today's Picks</h2>
+    <div id="picks-table"><div class="empty-state loading">Loading picks...</div></div>
+
+    <!-- Ingest Form -->
+    <h2>Ingest Signal</h2>
+    <div class="card">
+      <div class="form-group">
+        <label for="ingest-source">Source</label>
+        <select id="ingest-source">
+          <option value="source_a">Source A</option>
+          <option value="source_b" selected>Source B</option>
+          <option value="source_c">Source C</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="ingest-text">Signal Text</label>
+        <textarea id="ingest-text" placeholder="Paste raw signal message here..."></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="ingestSignal()">Ingest</button>
+      <div id="ingest-result" class="mt-1"></div>
+    </div>
+  </div>
+
+  <script src="static/js/utils.js"></script>
+  <script src="static/js/api.js"></script>
+  <script src="static/js/charts.js"></script>
+  <script>
+    async function loadSignals() {
+      const [dash, straights, sources] = await Promise.allSettled([
+        API.signals.dashboard(),
+        API.signals.straights(),
+        API.signals.sources(),
+      ]);
+
+      if (dash.status === 'fulfilled') {
+        const d = dash.value;
+        document.getElementById('kpi-pending').textContent = d.pending_count ?? '--';
+        document.getElementById('kpi-today').textContent = d.today_count ?? '--';
+        document.getElementById('kpi-sources').textContent = d.source_count ?? '--';
+        const wr = d.overall_win_rate;
+        const wrEl = document.getElementById('kpi-wr');
+        wrEl.textContent = wr != null ? `${(wr * 100).toFixed(1)}%` : '--';
+        if (wr > 0.55) wrEl.style.color = 'var(--green)';
+        else if (wr < 0.45) wrEl.style.color = 'var(--red)';
+      }
+
+      if (sources.status === 'fulfilled') {
+        renderSourceChart(sources.value || []);
+      }
+
+      if (straights.status === 'fulfilled') {
+        renderPicksTable(straights.value || []);
+        renderMarketsChart(straights.value || []);
+      }
+    }
+
+    function renderSourceChart(sources) {
+      const chart = initChart('chart-sources');
+      if (!chart) return;
+      const sorted = sources.slice().sort((a, b) => (b.win_rate || 0) - (a.win_rate || 0));
+      chart.setOption({
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: sorted.map(s => s.source) },
+        yAxis: { type: 'value', min: 0, max: 1, axisLabel: { formatter: v => `${(v * 100).toFixed(0)}%` } },
+        series: [{
+          type: 'bar',
+          data: sorted.map(s => ({
+            value: s.win_rate || 0,
+            itemStyle: { color: (s.win_rate || 0) >= 0.55 ? '#3fb950' : (s.win_rate || 0) < 0.45 ? '#f85149' : '#d29922' },
+          })),
+          label: { show: true, position: 'top', formatter: p => `${(p.value * 100).toFixed(0)}%`, color: '#c9d1d9', fontSize: 11 },
+        }],
+      });
+    }
+
+    function renderMarketsChart(picks) {
+      const chart = initChart('chart-markets');
+      if (!chart) return;
+      const counts = {};
+      for (const p of picks) {
+        const m = p.market || 'unknown';
+        counts[m] = (counts[m] || 0) + 1;
+      }
+      const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      if (!entries.length) {
+        chart.setOption({ title: { text: 'No picks', left: 'center', top: 'middle', textStyle: { color: '#8b949e' } } });
+        return;
+      }
+      chart.setOption({
+        tooltip: { trigger: 'item' },
+        series: [{
+          type: 'pie',
+          radius: ['40%', '70%'],
+          data: entries.map(([name, value]) => ({ name, value })),
+          label: { color: '#c9d1d9', fontSize: 11 },
+        }],
+      });
+    }
+
+    function renderPicksTable(picks) {
+      const el = document.getElementById('picks-table');
+      if (!picks.length) {
+        el.innerHTML = '<div class="empty-state">No picks available. Ingest signals to get started.</div>';
+        return;
+      }
+      const rows = picks.slice(0, 20).map(p => `
+        <tr>
+          <td>${p.team_or_player || '--'}</td>
+          <td>${p.market || '--'}</td>
+          <td>${p.line != null ? p.line : '--'}</td>
+          <td>${p.odds || '--'}</td>
+          <td>${p.units != null ? p.units + 'u' : '--'}</td>
+          <td><span class="badge badge-${p.source === 'source_a' ? 'reliable' : p.source === 'source_b' ? 'developing' : 'unproven'}">${p.source || '--'}</span></td>
+        </tr>
+      `).join('');
+      el.innerHTML = `
+        <table>
+          <thead><tr>
+            <th>Team/Player</th><th>Market</th><th>Line</th><th>Odds</th><th>Units</th><th>Source</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    async function ingestSignal() {
+      const source = document.getElementById('ingest-source').value;
+      const text = document.getElementById('ingest-text').value.trim();
+      const resultEl = document.getElementById('ingest-result');
+      if (!text) { resultEl.textContent = 'Please enter signal text.'; return; }
+      resultEl.innerHTML = '<span class="spinner"></span>';
+      try {
+        const result = await API.signals.ingest(source, text);
+        resultEl.innerHTML = `<span class="text-green">Stored ${result.signals_stored} signal(s) (raw_id=${result.raw_id})</span>`;
+        document.getElementById('ingest-text').value = '';
+        loadSignals();
+      } catch (e) {
+        resultEl.innerHTML = `<span class="text-red">Error: ${e.message}</span>`;
+      }
+    }
+
+    loadSignals();
+  </script>
+</body>
+</html>

@@ -46,29 +46,6 @@ class SystemAdminSkill(BaseSkill):
         "restart container nginx",
     ]
 
-    async def execute(self, ctx: SkillContext) -> SkillResponse:
-        text = ctx.message.content.lower().strip()
-        entities = ctx.match.entities
-
-        # Determine which command to run
-        cmd = self._resolve_command(text, entities, ctx.user_tier)
-        if cmd is None:
-            return self._error(
-                "I couldn't determine what system command to run. "
-                "Try: 'check disk space', 'memory usage', 'docker status', etc."
-            )
-
-        if isinstance(cmd, str):
-            # cmd is an error message (insufficient tier)
-            return self._error(cmd)
-
-        try:
-            result = await self._run_command(cmd)
-            return self._reply(f"```\n{result}\n```")
-        except Exception as e:
-            logger.exception("System command failed: %s", cmd)
-            return self._error(f"Command failed: {e}")
-
     def _resolve_command(
         self, text: str, entities: dict, user_tier: int
     ) -> list[str] | str | None:

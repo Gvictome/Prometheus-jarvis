@@ -93,17 +93,31 @@ class GoogleDriveSkill(BaseSkill):
     # ── Auth ──────────────────────────────────────────────
 
     def _get_token_sync(self) -> str:
-        """Load service account credentials and return a fresh access token (sync)."""
+        """Load credentials and return a fresh access token (sync).
+
+        Supports both service_account and authorized_user credential types.
+        """
         from google.auth.transport.requests import Request
-        from google.oauth2 import service_account
+        from google.oauth2 import credentials as oauth2_creds, service_account
 
         if not settings.GOOGLE_DRIVE_CREDENTIALS_JSON:
             raise ValueError("GOOGLE_DRIVE_CREDENTIALS_JSON is not configured")
 
         info = json.loads(settings.GOOGLE_DRIVE_CREDENTIALS_JSON)
-        creds = service_account.Credentials.from_service_account_info(
-            info, scopes=[_DRIVE_SCOPE]
-        )
+
+        if info.get("type") == "authorized_user":
+            creds = oauth2_creds.Credentials(
+                token=None,
+                refresh_token=info["refresh_token"],
+                client_id=info["client_id"],
+                client_secret=info["client_secret"],
+                token_uri="https://oauth2.googleapis.com/token",
+            )
+        else:
+            creds = service_account.Credentials.from_service_account_info(
+                info, scopes=[_DRIVE_SCOPE]
+            )
+
         creds.refresh(Request())
         return creds.token
 

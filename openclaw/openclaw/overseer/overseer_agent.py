@@ -59,6 +59,9 @@ class OverseerAgent:
         self._pending_approvals: dict[str, ApprovalRequest] = {}
         self._started_at: float = time.time()
 
+        # Reload persisted pending approvals from the database on startup
+        self._load_pending_approvals()
+
         if config.agent2_state == Agent2State.RUNNING:
             self._agent2.start()
 
@@ -176,8 +179,19 @@ class OverseerAgent:
 
     # ── Check-In Reports ──────────────────────────────────
 
+    def set_scheduler(self, scheduler: Any) -> None:
+        """Inject the OverseerScheduler so check-ins can report next_audit_at."""
+        self._scheduler = scheduler
+
     def generate_check_in(self) -> CheckInReport:
         last = self._agent2.last_report
+        next_audit_at: str | None = None
+        scheduler = getattr(self, "_scheduler", None)
+        if scheduler is not None:
+            try:
+                next_audit_at = scheduler.get_next_audit_time()
+            except Exception:
+                pass
         return CheckInReport(
             agent2_state=self._agent2.state.value,
             last_audit_summary=last.summary if last else None,
@@ -186,6 +200,7 @@ class OverseerAgent:
             ),
             critical_findings=last.critical_count if last else 0,
             uptime_hours=round((time.time() - self._started_at) / 3600, 2),
+            next_audit_at=next_audit_at,
         )
 
     def format_check_in(self, report: CheckInReport) -> str:
@@ -220,6 +235,18 @@ class OverseerAgent:
         )
         self._pending_approvals[req.request_id] = req
 
+        # Persist so it survives a restart
+        try:
+            self._store.save_approval(
+                request_id=req.request_id,
+                request_type=request_type,
+                description=description,
+                proposed_change=proposed_change,
+                status="pending",
+            )
+        except Exception as exc:
+            logger.warning("Could not persist approval %s: %s", req.request_id, exc)
+
         self._store.log_audit(
             user_id="overseer:agent1",
             action="approval_created",
@@ -247,6 +274,20 @@ class OverseerAgent:
 
         result = self._apply_approved_change(req)
 
+        # Update persisted status
+        try:
+            self._store.save_approval(
+                request_id=request_id,
+                request_type=req.request_type,
+                description=req.description,
+                proposed_change=req.proposed_change,
+                status="approved",
+                resolved_at=req.resolved_at.isoformat(),
+                resolved_by=approver_id,
+            )
+        except Exception as exc:
+            logger.warning("Could not persist approval update %s: %s", request_id, exc)
+
         self._store.log_audit(
             user_id=approver_id,
             action="approval_approved",
@@ -267,6 +308,20 @@ class OverseerAgent:
         req.status = ApprovalStatus.REJECTED
         req.resolved_at = datetime.utcnow()
         req.resolved_by = rejector_id
+
+        # Update persisted status
+        try:
+            self._store.save_approval(
+                request_id=request_id,
+                request_type=req.request_type,
+                description=req.description,
+                proposed_change=req.proposed_change,
+                status="rejected",
+                resolved_at=req.resolved_at.isoformat(),
+                resolved_by=rejector_id,
+            )
+        except Exception as exc:
+            logger.warning("Could not persist approval rejection %s: %s", request_id, exc)
 
         self._store.log_audit(
             user_id=rejector_id,
@@ -336,6 +391,36 @@ class OverseerAgent:
             return "No key_id in proposed change."
 
         return f"Unknown request type: {req.request_type}"
+
+    # ── Approval persistence ──────────────────────────────
+
+    def _load_pending_approvals(self) -> None:
+        """Reload PENDING approval requests from the database on startup."""
+        try:
+            rows = self._store.load_approvals(status="pending")
+            for row in rows:
+                req = ApprovalRequest(
+                    request_id=row["request_id"],
+                    request_type=row["request_type"],
+                    description=row["description"],
+                    proposed_change=row.get("proposed_change", {}),
+                    status=ApprovalStatus.PENDING,
+                )
+                self._pending_approvals[req.request_id] = req
+            if rows:
+                logger.info("Loaded %d pending approvals from store", len(rows))
+        except Exception as exc:
+            logger.warning("Could not load pending approvals: %s", exc)
+
+    # ── Public approval API (for SSHHardeningSkill and other consumers) ──────
+
+    def get_approval(self, request_id: str) -> "ApprovalRequest | None":
+        """Return an approval request by ID, or None if not found."""
+        return self._pending_approvals.get(request_id)
+
+    def log_action(self, user_id: str, action: str, detail: str | None = None, tier: int = 5) -> None:
+        """Write an audit log entry via the store."""
+        self._store.log_audit(user_id=user_id, action=action, detail=detail, tier=tier)
 
     # ── Command Handler (called by OverseerSkill) ─────────
 

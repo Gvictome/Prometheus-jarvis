@@ -11,9 +11,9 @@ services:
       - ./agents.json:/app/agents.json:ro
     env_file: .env
     depends_on:
-      ollama:
-        condition: service_started
       redis:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     deploy:
       resources:
@@ -25,25 +25,23 @@ services:
       timeout: 5s
       retries: 3
 
-  # ── Local LLM ────────────────────────────────────────
+  # ── Local LLM ─────────────────────────────────────────
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
     restart: unless-stopped
-    ports:
-      - "11434:11434"
     volumes:
-      - ./data/ollama:/root/.ollama
+      - ollama-data:/root/.ollama
     deploy:
       resources:
         limits:
-          memory: 3072M
+          memory: 4096M
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # ── Cache & Message Queue ────────────────────────────
   redis:
@@ -91,7 +89,7 @@ services:
     env_file: .env
     environment:
       OPENCLAW_URL: http://openclaw:8000
-      VOICE_GATEWAY_URL: http://voice-gateway:8001
+      VOICE_GATEWAY_URL: http://voice-gateway:8000
     depends_on:
       openclaw:
         condition: service_healthy
@@ -106,7 +104,7 @@ services:
     container_name: voice-gateway
     restart: unless-stopped
     ports:
-      - "8001:8001"
+      - "8001:8000"
     env_file: .env
     depends_on:
       openclaw:
@@ -116,7 +114,7 @@ services:
         limits:
           memory: 1024M
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8001/health').raise_for_status()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -124,3 +122,4 @@ services:
 
 volumes:
   redis-data:
+  ollama-data:

@@ -1,0 +1,156 @@
+services:
+  # ── Shared Redis ──────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: jarvis-team-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ── Shared Local LLM ──────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: jarvis-team-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        limits:
+          memory: 4096M
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Kendall — Head of Sales ───────────────────────────────────────────────
+  openclaw-kendall:
+    build: ./openclaw
+    container_name: openclaw-kendall
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./data-kendall:/data
+    env_file: .env.team
+    environment:
+      AGENT_NAME: Kendall
+      AGENT_ROLE: Head of Sales
+      TELEGRAM_BOT_TOKEN: ${KENDALL_BOT_TOKEN}
+      REDIS_URL: redis://redis:6379/1
+      OPENROUTER_MODEL: qwen/qwen3-coder:free
+      DB_PATH: /data/openclaw.db
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  telegram-kendall:
+    build: ./telegram-bot
+    container_name: telegram-kendall
+    restart: unless-stopped
+    env_file: .env.team
+    environment:
+      TELEGRAM_BOT_TOKEN: ${KENDALL_BOT_TOKEN}
+      OPENCLAW_URL: http://openclaw-kendall:8000
+    depends_on:
+      openclaw-kendall:
+        condition: service_healthy
+
+  # ── Dymani — AI Content Lead ──────────────────────────────────────────────
+  openclaw-dymani:
+    build: ./openclaw
+    container_name: openclaw-dymani
+    restart: unless-stopped
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./data-dymani:/data
+    env_file: .env.team
+    environment:
+      AGENT_NAME: Dymani
+      AGENT_ROLE: AI Content Lead
+      TELEGRAM_BOT_TOKEN: ${DYMANI_BOT_TOKEN}
+      REDIS_URL: redis://redis:6379/2
+      OPENROUTER_MODEL: qwen/qwen3-coder:free
+      DB_PATH: /data/openclaw.db
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  telegram-dymani:
+    build: ./telegram-bot
+    container_name: telegram-dymani
+    restart: unless-stopped
+    env_file: .env.team
+    environment:
+      TELEGRAM_BOT_TOKEN: ${DYMANI_BOT_TOKEN}
+      OPENCLAW_URL: http://openclaw-dymani:8000
+    depends_on:
+      openclaw-dymani:
+        condition: service_healthy
+
+  # ── Chris — Jr Dev Intern ─────────────────────────────────────────────────
+  openclaw-chris:
+    build: ./openclaw
+    container_name: openclaw-chris
+    restart: unless-stopped
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./data-chris:/data
+    env_file: .env.team
+    environment:
+      AGENT_NAME: Chris
+      AGENT_ROLE: Jr Dev Intern
+      TELEGRAM_BOT_TOKEN: ${CHRIS_BOT_TOKEN}
+      REDIS_URL: redis://redis:6379/3
+      OPENROUTER_MODEL: qwen/qwen3-coder:free
+      DB_PATH: /data/openclaw.db
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  telegram-chris:
+    build: ./telegram-bot
+    container_name: telegram-chris
+    restart: unless-stopped
+    env_file: .env.team
+    environment:
+      TELEGRAM_BOT_TOKEN: ${CHRIS_BOT_TOKEN}
+      OPENCLAW_URL: http://openclaw-chris:8000
+    depends_on:
+      openclaw-chris:
+        condition: service_healthy
+
+volumes:
+  redis-data:
+  ollama-data:

@@ -75,6 +75,49 @@ _REGEX_PATTERNS: dict[str, list[tuple[str, list[str]]]] = {
         (r"\bgoogle\s+drive\s+(?:upload|save)\s+(.+)", ["name"]),
         (r"\bgoogle\s+drive\b", []),
     ],
+    "sports_signals": [
+        (r"\b(today'?s?\s*)?(straights?|picks?|bets?)\b", []),
+        (r"\bbuild\s+parlays?\b", []),
+        (r"\b(today'?s?\s*)?parlays?\b", []),
+        (r"\b(best|top)\s+sources?\b", []),
+        (r"\bsource\s+performance\b", []),
+        (r"\b(yesterday'?s?\s*)?results?\b", []),
+        (r"\bingest\s+signal\b", []),
+        (r"\bgrade\s+signal\b", []),
+        (r"\bsignal\s+(stats?|dashboard)\b", []),
+        (r"\bbetting\s+(signals?|intelligence)\b", []),
+    ],
+    "politician_intel": [
+        (r"\bpolitician\s+alerts?\b", []),
+        (r"\bpolitician\s+trades?\b", []),
+        (r"\bpolitician\s+profile\s+(.+)$", ["name"]),
+        (r"\bgambling\s+legislation\b", []),
+        (r"\bgaming\s+bills?\b", []),
+        (r"\bstate\s+gambling\s+bills?\b", []),
+        (r"\bsports\s+betting\s+bills?\b", []),
+        (r"\bpolitician\s+briefing\b", []),
+        (r"\bpolitical\s+briefing\b", []),
+        (r"\bgaming\s+stock\s+trades?\b", []),
+        (r"\bstock\s+act\s+filings?\b", []),
+        (r"\bcongressional\s+(trades?|intel|intelligence)\b", []),
+    ],
+    "council": [
+        (r"\bcouncil\s+analyze\s+(.+)$", ["topic"]),
+        (r"\bcouncil\s+debate\s+(\d+)\b", ["debate_id"]),
+        (r"\bcouncil\s+history\b", []),
+        (r"\bcouncil\b", []),
+        (r"\b7\s+agent\s+analysis\b", []),
+        (r"\bmulti[\s-]agent\s+(analysis|debate|council)\b", []),
+    ],
+    "live_odds": [
+        (r"\blive\s+odds\s+(.+)$", ["sport"]),
+        (r"\blive\s+odds\b", []),
+        (r"\bline\s+movement\s+(.+)$", ["team"]),
+        (r"\bbest\s+odds\s+(.+)$", ["query"]),
+        (r"\bodds\s+remaining\b", []),
+        (r"\bcurrent\s+lines?\b", []),
+        (r"\bbook\s+comparison\b", []),
+    ],
 }
 
 # ── Heuristic keywords: medium confidence ────────────────
@@ -86,7 +129,12 @@ _KEYWORD_MAP: dict[str, list[str]] = {
     "security_monitor": ["security", "firewall", "attack", "breach", "vulnerability"],
     "ssh_hardening": ["ssh hardening", "sshd config", "firewall hardening", "ssh tunnel", "harden ssh"],
     "overseer": ["overseer", "security agent", "audit report", "approval", "security protocol", "keyvault", "api key"],
+    "memory": ["remember", "recall", "forget", "memorize", "you know about", "what do you know"],
     "google_drive": ["google drive", "drive folder", "gdrive", "create folder", "upload to drive"],
+    "sports_signals": ["signal", "parlay", "straight", "picks", "betting", "odds", "sports", "source performance", "grade"],
+    "politician_intel": ["politician", "congressman", "senator", "congress", "gambling legislation", "gaming trade", "stock act", "gaming bill", "congressional intel", "political briefing"],
+    "council": ["council", "multi-agent", "7 agents", "agent debate", "council analyze", "bull bear", "agent consensus"],
+    "live_odds": ["live odds", "line movement", "best odds", "current lines", "book odds", "odds api", "odds remaining", "sportsbook comparison"],
 }
 
 

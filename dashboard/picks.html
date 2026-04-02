@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Picks - Signal Intelligence</title>
+  <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+  <nav>
+    <span class="brand">Signal Intelligence</span>
+    <div class="links">
+      <a href="index.html" data-page="dashboard">Dashboard</a>
+      <a href="ingest.html" data-page="ingest">Ingest</a>
+      <a href="picks.html" data-page="picks" class="active">Picks</a>
+      <a href="grading.html" data-page="grading">Grading</a>
+      <a href="sources.html" data-page="sources">Sources</a>
+    </div>
+  </nav>
+  <div class="container">
+    <h1>Today's Picks</h1>
+    <h2>Priority Straights</h2>
+    <div id="straights-content"><div class="empty-state loading">Loading...</div></div>
+    <h2>Low Variance Parlays</h2>
+    <div id="parlays-content"><div class="empty-state loading">Loading...</div></div>
+  </div>
+  <script src="static/js/utils.js"></script>
+  <script src="static/js/api.js"></script>
+  <script src="static/js/picks.js"></script>
+  <script>loadPicks();</script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prometheus — Political Intel</title>
+  <link rel="stylesheet" href="static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body>
+  <nav>
+    <span class="brand">Prometheus</span>
+    <div class="links">
+      <a href="index.html">Command Center</a>
+      <a href="signals.html">Signals</a>
+      <a href="politics.html" class="active">Politics</a>
+      <a href="odds.html">Odds</a>
+      <a href="council.html">Council</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <h1>Political Intelligence</h1>
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi-card"><span class="kpi-label">Tracked Politicians</span><span class="kpi-value" id="kpi-politicians">--</span></div>
+      <div class="kpi-card"><span class="kpi-label">Undelivered Alerts</span><span class="kpi-value" id="kpi-alerts">--</span></div>
+      <div class="kpi-card kpi-bear"><span class="kpi-label">Critical Alerts (7d)</span><span class="kpi-value" id="kpi-critical">--</span></div>
+      <div class="kpi-card"><span class="kpi-label">Gaming Trades (90d)</span><span class="kpi-value" id="kpi-trades">--</span></div>
+      <div class="kpi-card kpi-accent"><span class="kpi-label">Active Bills</span><span class="kpi-value" id="kpi-bills">--</span></div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Trade treemap by ticker -->
+      <div class="chart-container">
+        <div class="chart-title">Gaming Trades by Ticker</div>
+        <div id="chart-trades-treemap" class="chart-inner chart-md"></div>
+      </div>
+
+      <!-- Bill relevance bar -->
+      <div class="chart-container">
+        <div class="chart-title">Top Bills by Relevance</div>
+        <div id="chart-bills-bar" class="chart-inner chart-md"></div>
+      </div>
+    </div>
+
+    <!-- Alert Cards -->
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h2>Recent Alerts</h2>
+      <button class="btn" onclick="triggerCollect()">Collect from Congress.gov</button>
+    </div>
+    <div id="alert-cards"><div class="empty-state loading">Loading alerts...</div></div>
+    <div id="collect-status"></div>
+
+    <!-- Bill Tracker -->
+    <h2>Gambling Legislation</h2>
+    <div class="form-group" style="max-width:200px">
+      <label>Min Relevance</label>
+      <select id="bill-filter" onchange="loadBills()">
+        <option value="0.3">30%+</option>
+        <option value="0.5">50%+</option>
+        <option value="0.7">70%+</option>
+      </select>
+    </div>
+    <div id="bill-list"><div class="empty-state loading">Loading bills...</div></div>
+
+    <!-- Politician Search -->
+    <h2>Politician Profile</h2>
+    <div class="card">
+      <div style="display:flex;gap:0.5rem;align-items:flex-end">
+        <div class="form-group" style="flex:1;margin:0">
+          <label>Search by Name</label>
+          <input type="text" id="pol-search" placeholder="e.g. Pelosi, Warren, Cruz...">
+        </div>
+        <button class="btn btn-primary" onclick="searchPolitician()">Search</button>
+      </div>
+      <div id="pol-result" class="mt-1"></div>
+    </div>
+  </div>
+
+  <script src="static/js/utils.js"></script>
+  <script src="static/js/api.js"></script>
+  <script src="static/js/charts.js"></script>
+  <script>
+    async function loadPolitics() {
+      const [dash, alerts, trades] = await Promise.allSettled([
+        API.politics.dashboard(),
+        API.politics.alerts(20),
+        API.politics.trades(90),
+      ]);
+
+      if (dash.status === 'fulfilled') {
+        const d = dash.value;
+        document.getElementById('kpi-politicians').textContent = d.tracked_politicians ?? '--';
+        document.getElementById('kpi-alerts').textContent = d.undelivered_alerts ?? '--';
+        document.getElementById('kpi-critical').textContent = d.critical_alerts_7d ?? '--';
+        document.getElementById('kpi-trades').textContent = d.gaming_trades_90d ?? '--';
+        document.getElementById('kpi-bills').textContent = d.relevant_bills ?? '--';
+      }
+
+      if (alerts.status === 'fulfilled') {
+        renderAlerts(alerts.value.alerts || []);
+      }
+
+      if (trades.status === 'fulfilled') {
+        renderTradesTreemap(trades.value.trades || []);
+      }
+
+      loadBills();
+    }
+
+    async function loadBills() {
+      const minScore = parseFloat(document.getElementById('bill-filter').value);
+      const listEl = document.getElementById('bill-list');
+      listEl.innerHTML = '<div class="empty-state loading">Loading...</div>';
+      try {
+        const data = await API.politics.bills(minScore);
+        const bills = data.bills || [];
+        renderBillsBar(bills);
+        if (!bills.length) {
+          listEl.innerHTML = '<div class="empty-state">No bills above this threshold. Run a Congress.gov collection first.</div>';
+          return;
+        }
+        listEl.innerHTML = bills.slice(0, 15).map(b => `
+          <div class="bill-card">
+            <div class="bill-title">
+              <span class="bill-relevance">${Math.round((b.relevance_score || 0) * 100)}%</span>
+              ${b.title || 'Unknown Bill'}
+            </div>
+            <div class="bill-meta">
+              <span>${b.congress_bill_id || ''}</span>
+              <span>${(b.status || 'introduced').replace('_', ' ')}</span>
+              <span>${(b.category || 'other').replace('_', ' ')}</span>
+              <span>${(b.introduced_at || '').slice(0, 10) || '?'}</span>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        listEl.innerHTML = `<div class="empty-state text-red">Error: ${e.message}</div>`;
+      }
+    }
+
+    function renderAlerts(alerts) {
+      const el = document.getElementById('alert-cards');
+      if (!alerts.length) {
+        el.innerHTML = '<div class="empty-state">No alerts. All clear.</div>';
+        return;
+      }
+      el.innerHTML = alerts.slice(0, 10).map(a => `
+        <div class="alert-card ${a.severity || 'low'}">
+          <div class="alert-header">
+            <span class="alert-title">${a.title || 'Untitled'}</span>
+            <span class="badge badge-${a.severity === 'critical' ? 'reliable' : a.severity === 'high' ? 'developing' : 'unproven'}">${a.severity || 'low'}</span>
+          </div>
+          <div class="alert-meta">${a.politician_name || '?'} &bull; ${(a.created_at || '').slice(0, 10)}</div>
+          ${a.detail ? `<div class="alert-detail">${a.detail.slice(0, 150)}</div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    function renderTradesTreemap(trades) {
+      const chart = initChart('chart-trades-treemap');
+      if (!chart) return;
+      if (!trades.length) {
+        chart.setOption({ title: { text: 'No gaming trades', left: 'center', top: 'middle', textStyle: { color: '#8b949e' } } });
+        return;
+      }
+      const byTicker = {};
+      for (const t of trades) {
+        const tk = t.ticker || '?';
+        byTicker[tk] = (byTicker[tk] || 0) + (t.amount_max || t.amount_min || 10000);
+      }
+      const data = Object.entries(byTicker).map(([name, value]) => ({ name, value: Math.round(value) }));
+      chart.setOption({
+        tooltip: { formatter: p => `${p.name}: $${p.value.toLocaleString()}` },
+        series: [{
+          type: 'treemap',
+          data,
+          label: { show: true, formatter: '{b}', color: '#c9d1d9', fontSize: 12, fontWeight: 600 },
+          itemStyle: { borderColor: '#0d1117', borderWidth: 2 },
+          levels: [{ itemStyle: { borderColor: '#30363d', borderWidth: 3, gapWidth: 3 } }],
+        }],
+      });
+    }
+
+    function renderBillsBar(bills) {
+      const chart = initChart('chart-bills-bar');
+      if (!chart) return;
+      const top = bills.slice(0, 8);
+      if (!top.length) {
+        chart.setOption({ title: { text: 'No bills', left: 'center', top: 'middle', textStyle: { color: '#8b949e' } } });
+        return;
+      }
+      chart.setOption({
+        tooltip: { trigger: 'axis' },
+        grid: { left: '3%', right: '10%', containLabel: true },
+        xAxis: { type: 'value', min: 0, max: 1, axisLabel: { formatter: v => `${(v * 100).toFixed(0)}%` } },
+        yAxis: { type: 'category', data: top.map(b => b.congress_bill_id || b.title?.slice(0, 20) || '?'), axisLabel: { fontSize: 10 } },
+        series: [{
+          type: 'bar',
+          data: top.map(b => ({ value: b.relevance_score || 0, itemStyle: { color: '#58a6ff' } })),
+          label: { show: true, position: 'right', formatter: p => `${(p.value * 100).toFixed(0)}%`, color: '#c9d1d9', fontSize: 10 },
+        }],
+      });
+    }
+
+    async function searchPolitician() {
+      const name = document.getElementById('pol-search').value.trim();
+      const resultEl = document.getElementById('pol-result');
+      if (!name) return;
+      resultEl.innerHTML = '<span class="spinner"></span>';
+      try {
+        const data = await API.politics.profile(name);
+        const p = data.politician;
+        const trades = data.trades || [];
+        resultEl.innerHTML = `
+          <div class="card" style="margin-top:0.75rem">
+            <strong>${p.name}</strong> (${p.party || '?'}-${p.state || '?'}) &bull; ${p.chamber || '?'}
+            ${p.committees?.length ? `<div class="text-muted mt-1">${p.committees.slice(0, 3).join(', ')}</div>` : ''}
+            ${trades.length ? `<div class="mt-1 text-muted">${trades.length} trades on record</div>` : ''}
+          </div>`;
+      } catch (e) {
+        resultEl.innerHTML = `<span class="text-muted">Not found: ${e.message}</span>`;
+      }
+    }
+
+    async function triggerCollect() {
+      const statusEl = document.getElementById('collect-status');
+      statusEl.innerHTML = '<span class="spinner"></span> Collecting from Congress.gov...';
+      try {
+        const result = await API.politics.collect(119);
+        statusEl.innerHTML = `<span class="text-green">Done — ${result.members_upserted} members, ${result.bills_stored} bills stored.</span>`;
+        loadPolitics();
+      } catch (e) {
+        statusEl.innerHTML = `<span class="text-red">Collection failed: ${e.message}</span>`;
+      }
+    }
+
+    loadPolitics();
+  </script>
+</body>
+</html>

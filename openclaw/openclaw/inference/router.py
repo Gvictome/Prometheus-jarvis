@@ -15,6 +15,7 @@ from typing import Any
 
 from openclaw.config import settings
 from openclaw.inference.openrouter_client import OpenRouterClient
+from openclaw.inference.claude_client import ClaudeClient
 from openclaw.inference.cost_tracker import CostTracker
 from openclaw.inference.ollama_client import OllamaClient
 from openclaw.memory.store import MemoryStore
@@ -66,12 +67,14 @@ class InferenceRouter:
     Routing strategy:
       - force_provider="openrouter" → Gemma 3 27B via OpenRouter (Athena conversations)
       - force_provider="ollama"     → qwen2.5:3b local (subagent/skill work)
+      - force_provider="claude"     → Claude via Anthropic API (premium fallback)
       - None (auto)                 → complexity score decides
     """
 
     def __init__(self, store: MemoryStore):
         self.ollama = OllamaClient()
         self.openrouter = OpenRouterClient()
+        self.claude = ClaudeClient()
         self.cost_tracker = CostTracker(store)
         self.threshold = settings.COMPLEXITY_THRESHOLD
 
@@ -131,11 +134,18 @@ class InferenceRouter:
 
         provider = force_provider or self._select_provider(last_user_msg)
 
-        # Normalize legacy "claude" references
-        if provider == "claude":
-            provider = "openrouter"
-
         try:
+            if provider == "claude":
+                if not self.claude.is_available():
+                    logger.warning("Claude unavailable, falling back to OpenRouter")
+                    provider = "openrouter"
+                else:
+                    result = await self.claude.chat(
+                        messages, system=system, temperature=temperature
+                    )
+                    self.cost_tracker.record(result)
+                    return result
+
             if provider == "openrouter":
                 if not self.openrouter.is_available():
                     logger.warning("OpenRouter unavailable, falling back to Ollama")
@@ -156,14 +166,22 @@ class InferenceRouter:
         except Exception as e:
             logger.exception("Primary provider %s failed", provider)
             # Fallback to the other provider
-            fallback = "ollama" if provider == "openrouter" else "openrouter"
+            if provider == "claude":
+                fallback = "openrouter" if self.openrouter.is_available() else "ollama"
+            else:
+                fallback = "ollama" if provider == "openrouter" else "openrouter"
+
             if fallback == "openrouter" and not self.openrouter.is_available():
-                raise
+                fallback = "ollama"
 
             logger.info("Falling back to %s", fallback)
             if fallback == "openrouter":
                 result = await self.openrouter.chat(
                     messages, system=system, temperature=temperature, tools=tools
+                )
+            elif fallback == "claude" and self.claude.is_available():
+                result = await self.claude.chat(
+                    messages, system=system, temperature=temperature
                 )
             else:
                 result = await self.ollama.chat(

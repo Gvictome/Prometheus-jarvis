@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prometheus — Command Center</title>
+  <link rel="stylesheet" href="static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body>
+  <nav>
+    <span class="brand">Prometheus</span>
+    <div class="links">
+      <a href="index.html" class="active">Command Center</a>
+      <a href="signals.html">Signals</a>
+      <a href="politics.html">Politics</a>
+      <a href="odds.html">Odds</a>
+      <a href="council.html">Council</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <h1>Command Center</h1>
+
+    <!-- KPI Row -->
+    <div class="kpi-grid" id="kpi-row">
+      <div class="kpi-card"><span class="kpi-label">Pending Signals</span><span class="kpi-value" id="kpi-signals">--</span></div>
+      <div class="kpi-card kpi-bull"><span class="kpi-label">Win Rate (7d)</span><span class="kpi-value" id="kpi-winrate">--</span></div>
+      <div class="kpi-card"><span class="kpi-label">Undelivered Alerts</span><span class="kpi-value kpi-alert" id="kpi-alerts">--</span></div>
+      <div class="kpi-card"><span class="kpi-label">Gaming Trades 90d</span><span class="kpi-value" id="kpi-trades">--</span></div>
+      <div class="kpi-card kpi-accent"><span class="kpi-label">Active Bills</span><span class="kpi-value" id="kpi-bills">--</span></div>
+      <div class="kpi-card"><span class="kpi-label">Debates Run</span><span class="kpi-value" id="kpi-debates">--</span></div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Bankroll / Win Rate Line Chart -->
+      <div class="chart-container">
+        <div class="chart-title">Source Win Rates</div>
+        <div id="chart-winrates" class="chart-inner chart-md"></div>
+      </div>
+
+      <!-- Council Confidence Gauge -->
+      <div class="chart-container">
+        <div class="chart-title">Latest Council Verdict</div>
+        <div id="chart-gauge" class="chart-inner chart-md"></div>
+      </div>
+    </div>
+
+    <!-- Activity Feed -->
+    <h2>Activity Feed</h2>
+    <div class="feed" id="activity-feed">
+      <div class="empty-state loading">Loading activity...</div>
+    </div>
+  </div>
+
+  <script src="static/js/utils.js"></script>
+  <script src="static/js/api.js"></script>
+  <script src="static/js/charts.js"></script>
+  <script>
+    async function loadDashboard() {
+      // Load KPIs in parallel
+      const [signalsData, politicsData, councilData] = await Promise.allSettled([
+        API.signals.dashboard(),
+        API.politics.dashboard(),
+        API.council.history(1),
+      ]);
+
+      if (signalsData.status === 'fulfilled') {
+        const s = signalsData.value;
+        document.getElementById('kpi-signals').textContent = s.pending_count ?? '--';
+        const wr = s.overall_win_rate;
+        const wrEl = document.getElementById('kpi-winrate');
+        wrEl.textContent = wr != null ? `${(wr * 100).toFixed(1)}%` : '--';
+        if (wr > 0.55) wrEl.style.color = 'var(--green)';
+        else if (wr < 0.45) wrEl.style.color = 'var(--red)';
+      }
+
+      if (politicsData.status === 'fulfilled') {
+        const p = politicsData.value;
+        const alertEl = document.getElementById('kpi-alerts');
+        alertEl.textContent = p.undelivered_alerts ?? '--';
+        if ((p.undelivered_alerts ?? 0) > 0) alertEl.style.color = 'var(--yellow)';
+        document.getElementById('kpi-trades').textContent = p.gaming_trades_90d ?? '--';
+        document.getElementById('kpi-bills').textContent = p.relevant_bills ?? '--';
+      }
+
+      if (councilData.status === 'fulfilled') {
+        const debates = councilData.value.debates || [];
+        document.getElementById('kpi-debates').textContent = debates.length >= 1 ? debates[0].id : '0';
+      }
+
+      // Source win rates chart
+      if (signalsData.status === 'fulfilled') {
+        renderWinRates(signalsData.value.sources || []);
+      }
+
+      // Council gauge
+      if (councilData.status === 'fulfilled') {
+        const debates = councilData.value.debates || [];
+        renderGauge(debates[0] || null);
+      }
+
+      // Activity feed
+      buildFeed(
+        signalsData.status === 'fulfilled' ? signalsData.value : null,
+        politicsData.status === 'fulfilled' ? politicsData.value : null,
+        councilData.status === 'fulfilled' ? councilData.value : null,
+      );
+    }
+
+    function renderWinRates(sources) {
+      const chart = initChart('chart-winrates');
+      if (!chart) return;
+      if (!sources.length) {
+        chart.setOption({ title: { text: 'No data', left: 'center', top: 'middle', textStyle: { color: '#8b949e', fontSize: 13 } } });
+        return;
+      }
+      const sorted = sources.slice().sort((a, b) => (b.win_rate || 0) - (a.win_rate || 0));
+      chart.setOption({
+        tooltip: { trigger: 'axis', formatter: params => `${params[0].name}<br/>Win Rate: ${(params[0].value * 100).toFixed(1)}%` },
+        xAxis: { type: 'category', data: sorted.map(s => s.source) },
+        yAxis: { type: 'value', min: 0, max: 1, axisLabel: { formatter: v => `${(v * 100).toFixed(0)}%` } },
+        series: [{
+          type: 'bar',
+          data: sorted.map(s => ({
+            value: s.win_rate || 0,
+            itemStyle: { color: (s.win_rate || 0) >= 0.55 ? '#3fb950' : (s.win_rate || 0) < 0.45 ? '#f85149' : '#d29922' },
+          })),
+        }],
+      });
+    }
+
+    function renderGauge(debate) {
+      const chart = initChart('chart-gauge');
+      if (!chart) return;
+      if (!debate) {
+        chart.setOption({ title: { text: 'No debates yet', left: 'center', top: 'middle', textStyle: { color: '#8b949e', fontSize: 13 } } });
+        return;
+      }
+      const pct = Math.round((debate.confidence || 0) * 100);
+      const verdictColor = {
+        strong_buy: '#3fb950', buy: '#65d06e',
+        neutral: '#8b949e',
+        sell: '#e07060', strong_sell: '#f85149',
+      }[debate.consensus] || '#8b949e';
+
+      chart.setOption({
+        series: [{
+          type: 'gauge',
+          min: 0, max: 100,
+          progress: { show: true, itemStyle: { color: verdictColor } },
+          axisLine: { lineStyle: { color: [[1, '#21262d']], width: 14 } },
+          axisTick: { show: false },
+          splitLine: { show: false },
+          axisLabel: { show: false },
+          pointer: { show: false },
+          detail: {
+            valueAnimation: true,
+            formatter: `{value}%\n${(debate.consensus || '').replace('_', ' ').toUpperCase()}`,
+            color: verdictColor,
+            fontSize: 14,
+            fontWeight: 700,
+            offsetCenter: [0, 0],
+          },
+          data: [{ value: pct, name: debate.topic }],
+          title: { fontSize: 11, color: '#8b949e', offsetCenter: [0, '65%'] },
+        }],
+      });
+    }
+
+    function buildFeed(signals, politics, council) {
+      const feedEl = document.getElementById('activity-feed');
+      const items = [];
+
+      if (politics && (politics.undelivered_alerts || 0) > 0) {
+        items.push({ dot: 'yellow', text: `${politics.undelivered_alerts} undelivered political alerts`, time: 'now' });
+      }
+      if (signals && (signals.pending_count || 0) > 0) {
+        items.push({ dot: 'green', text: `${signals.pending_count} pending signals awaiting grading`, time: 'now' });
+      }
+      if (politics && (politics.gaming_trades_90d || 0) > 0) {
+        items.push({ dot: '', text: `${politics.gaming_trades_90d} gaming stock trades in last 90 days`, time: '90d' });
+      }
+      if (politics && (politics.relevant_bills || 0) > 0) {
+        items.push({ dot: '', text: `${politics.relevant_bills} relevant gambling bills tracked`, time: 'total' });
+      }
+      if (council && council.debates && council.debates[0]) {
+        const d = council.debates[0];
+        items.push({ dot: '', text: `Last debate: "${d.topic}" — ${(d.consensus || '').replace('_', ' ')}`, time: (d.created_at || '').slice(0, 10) });
+      }
+
+      if (!items.length) {
+        feedEl.innerHTML = '<div class="empty-state">No recent activity. Start by fetching odds or running a council debate.</div>';
+        return;
+      }
+
+      feedEl.innerHTML = items.map(item => `
+        <div class="feed-item">
+          <span class="feed-dot ${item.dot}"></span>
+          <span class="feed-content">${item.text}</span>
+          <span class="feed-time">${item.time}</span>
+        </div>
+      `).join('');
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

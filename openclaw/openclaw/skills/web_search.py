@@ -37,18 +37,45 @@ class WebSearchSkill(BaseSkill):
         if not query:
             return self._error("What would you like me to search for?")
 
-        sender_id = ctx.message.sender_id
+        results: list[dict[str, Any]] = []
 
-        if not settings.SEARCH_API_KEY:
-            # Fall back to LLM knowledge
-            return await self._llm_answer(query, sender_id=sender_id)
+        if settings.BRAVE_SEARCH_API_KEY:
+            results = await self._brave_search(query)
+        elif settings.SEARCH_API_KEY:
+            results = await self._google_search(query)
 
-        results = await self._google_search(query)
         if not results:
-            return await self._llm_answer(query, sender_id=sender_id)
+            return await self._llm_answer(query)
 
         # Summarize results with LLM
-        return await self._summarize_results(query, results, sender_id=sender_id)
+        return await self._summarize_results(query, results)
+
+    async def _brave_search(self, query: str) -> list[dict[str, Any]]:
+        """Search using Brave Search API."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://api.search.brave.com/res/v1/web/search",
+                    params={"q": query, "count": 5},
+                    headers={
+                        "Accept": "application/json",
+                        "Accept-Encoding": "gzip",
+                        "X-Subscription-Token": settings.BRAVE_SEARCH_API_KEY,
+                    },
+                )
+                resp.raise_for_status()
+                items = resp.json().get("web", {}).get("results", [])
+                return [
+                    {
+                        "title": item.get("title", ""),
+                        "snippet": item.get("description", ""),
+                        "link": item.get("url", ""),
+                    }
+                    for item in items
+                ]
+        except Exception:
+            logger.exception("Brave search failed")
+            return []
 
     async def _google_search(self, query: str) -> list[dict[str, Any]]:
         """Search using Google Custom Search API."""
@@ -78,7 +105,7 @@ class WebSearchSkill(BaseSkill):
             return []
 
     async def _summarize_results(
-        self, query: str, results: list[dict[str, Any]], *, sender_id: str | None = None
+        self, query: str, results: list[dict[str, Any]]
     ) -> SkillResponse:
         """Use LLM to summarize search results."""
         results_text = "\n\n".join(
@@ -98,19 +125,17 @@ Provide a concise, informative answer based on these results. Cite sources where
             result = await self.inference.generate(
                 prompt=prompt,
                 system="Summarize search results concisely. Cite sources with URLs.",
-                sender_id=sender_id,
             )
             return self._reply(result["text"])
         except Exception as e:
             # Fall back to raw results
             return self._reply(results_text)
 
-    async def _llm_answer(self, query: str, *, sender_id: str | None = None) -> SkillResponse:
+    async def _llm_answer(self, query: str) -> SkillResponse:
         """Fall back to LLM knowledge when search API unavailable."""
         result = await self.inference.generate(
             prompt=f"Answer this question concisely: {query}",
             system="You are Jarvis. Answer questions directly and concisely. If you're not sure, say so.",
-            sender_id=sender_id,
         )
         text = result["text"]
         if not settings.SEARCH_API_KEY:

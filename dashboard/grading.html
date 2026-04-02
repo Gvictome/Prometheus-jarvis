@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grading - Signal Intelligence</title>
+  <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+  <nav>
+    <span class="brand">Signal Intelligence</span>
+    <div class="links">
+      <a href="index.html" data-page="dashboard">Dashboard</a>
+      <a href="ingest.html" data-page="ingest">Ingest</a>
+      <a href="picks.html" data-page="picks">Picks</a>
+      <a href="grading.html" data-page="grading" class="active">Grading</a>
+      <a href="sources.html" data-page="sources">Sources</a>
+    </div>
+  </nav>
+  <div class="container">
+    <h1>Grade Signals</h1>
+    <div id="pending-content"><div class="empty-state loading">Loading...</div></div>
+
+    <h2>Historical Results</h2>
+    <div class="card">
+      <div class="form-group">
+        <label for="results-date">Date</label>
+        <input type="date" id="results-date" onchange="loadResults()">
+      </div>
+    </div>
+    <div id="results-content"></div>
+  </div>
+  <script src="static/js/utils.js"></script>
+  <script src="static/js/api.js"></script>
+  <script src="static/js/grading.js"></script>
+  <script>
+    loadPending();
+    document.getElementById("results-date").value = today();
+  </script>
+</body>
+</html>

@@ -143,7 +143,6 @@ Format the briefing with sections: Schedule, Priority Tasks, Active Projects, an
                 prompt=prompt,
                 system="You are Jarvis creating a morning briefing. Be concise, structured, and actionable.",
                 force_provider="openrouter" if len(context) > 1000 else None,
-                sender_id=ctx.message.sender_id,
             )
             return self._reply(result["text"])
         except Exception as e:
@@ -159,7 +158,6 @@ Format the briefing with sections: Schedule, Priority Tasks, Active Projects, an
                 "and suggest a productive structure for the day."
             ),
             system="You are Jarvis, a personal assistant. Be concise and encouraging.",
-            sender_id=ctx.message.sender_id,
         )
         return self._reply(result["text"])
 

@@ -85,11 +85,12 @@ class SecurityProtocolAgent:
 
     async def run_audit(self, trigger: str = "scheduled") -> AuditReport:
         """Execute a full security audit across all 4 protocol domains."""
-        if self._state == Agent2State.STOPPED:
+        if self._state in (Agent2State.STOPPED, Agent2State.PAUSED):
+            reason = "stopped" if self._state == Agent2State.STOPPED else "paused"
             return AuditReport(
                 report_id=str(uuid.uuid4())[:8],
                 trigger=trigger,
-                summary="Agent is stopped. No audit performed.",
+                summary=f"Agent is {reason}. No audit performed.",
             )
 
         start_time = time.time()
@@ -287,20 +288,21 @@ class SecurityProtocolAgent:
 
         # Check audit_log for recent high-risk actions
         try:
-            rows = self._store.conn.execute(
-                "SELECT action, detail, user_id, created_at FROM audit_log "
-                "WHERE created_at >= datetime('now', '-24 hours') "
-                "AND (action LIKE '%shell%' OR action LIKE '%admin%' "
-                "     OR action LIKE '%security%') "
-                "ORDER BY created_at DESC LIMIT 50"
-            ).fetchall()
+            rows = self._store.query_audit_log(
+                where_clause=(
+                    "created_at >= datetime('now', '-24 hours') "
+                    "AND (action LIKE '%shell%' OR action LIKE '%admin%' "
+                    "     OR action LIKE '%security%')"
+                ),
+                limit=50,
+            )
             if rows:
                 findings.append(
                     AuditFinding(
                         check_name="recent_audit_events",
                         severity=AuditSeverity.INFO,
                         summary=f"{len(rows)} security-relevant audit events in last 24h",
-                        detail=json.dumps([dict(r) for r in rows[:10]], default=str),
+                        detail=json.dumps(rows[:10], default=str),
                     )
                 )
         except Exception as exc:

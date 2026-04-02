@@ -132,3 +132,17 @@ class GatewayRouter:
         )
 
         return response
+
+    async def push_to_admin(self, admin_id: str, text: str) -> None:
+        """Proactively push a message to an admin user's conversation history.
+
+        This stores the message so it appears when the admin next interacts.
+        In future this can be extended to push via Telegram/WhatsApp webhooks.
+        """
+        conv_id = f"overseer:{admin_id}"
+        try:
+            self.store.get_or_create_conversation(conv_id, "scheduler", "overseer")
+            self.store.add_message(conv_id, "assistant", text, "scheduler")
+            logger.info("Pushed overseer notification to admin %s", admin_id)
+        except Exception:
+            logger.exception("push_to_admin failed for %s", admin_id)

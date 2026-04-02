@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prometheus — Live Odds</title>
+  <link rel="stylesheet" href="static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body>
+  <nav>
+    <span class="brand">Prometheus</span>
+    <div class="links">
+      <a href="index.html">Command Center</a>
+      <a href="signals.html">Signals</a>
+      <a href="politics.html">Politics</a>
+      <a href="odds.html" class="active">Odds</a>
+      <a href="council.html">Council</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <h1>Live Odds</h1>
+
+    <!-- Sport selector + fetch -->
+    <div class="card" style="display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap">
+      <div class="form-group" style="flex:1;min-width:160px;margin:0">
+        <label>Sport</label>
+        <select id="sport-select">
+          <option value="basketball_nba">NBA Basketball</option>
+          <option value="americanfootball_nfl">NFL Football</option>
+          <option value="americanfootball_ncaaf">NCAAF Football</option>
+          <option value="baseball_mlb">MLB Baseball</option>
+          <option value="icehockey_nhl">NHL Hockey</option>
+          <option value="basketball_ncaab">NCAAB Basketball</option>
+          <option value="mma_mixed_martial_arts">MMA/UFC</option>
+          <option value="soccer_epl">Soccer (EPL)</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:1;min-width:120px;margin:0">
+        <label>Market</label>
+        <select id="market-select">
+          <option value="h2h,spreads">Moneyline + Spread</option>
+          <option value="h2h">Moneyline</option>
+          <option value="spreads">Spread</option>
+          <option value="totals">Totals</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="fetchOdds()">Fetch Live Odds</button>
+      <span id="quota-badge" class="text-muted" style="font-size:0.8rem"></span>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid-2">
+      <!-- Line movement chart -->
+      <div class="chart-container">
+        <div class="chart-title">Line Movement</div>
+        <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+          <input type="text" id="movement-team" placeholder="Team name..." style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:0.4rem 0.6rem;border-radius:5px;font-size:0.85rem;font-family:inherit">
+          <button class="btn" onclick="loadMovement()">Track</button>
+        </div>
+        <div id="chart-movement" class="chart-inner chart-md"></div>
+      </div>
+
+      <!-- Book comparison -->
+      <div class="chart-container">
+        <div class="chart-title">Book Comparison — Best Available</div>
+        <div id="chart-books" class="chart-inner chart-md"></div>
+      </div>
+    </div>
+
+    <!-- Events / Odds Table -->
+    <h2>Current Events</h2>
+    <div id="events-table"><div class="empty-state">Select a sport and click Fetch Live Odds.</div></div>
+  </div>
+
+  <script src="static/js/utils.js"></script>
+  <script src="static/js/api.js"></script>
+  <script src="static/js/charts.js"></script>
+  <script>
+    let currentEvents = [];
+
+    async function fetchOdds() {
+      const sport = document.getElementById('sport-select').value;
+      const markets = document.getElementById('market-select').value;
+      const tableEl = document.getElementById('events-table');
+      tableEl.innerHTML = '<div class="empty-state loading"><span class="spinner"></span> Fetching odds...</div>';
+
+      try {
+        const data = await API.odds.fetch(sport, 'us', markets);
+        currentEvents = data.events || [];
+
+        if (data.requests_remaining != null) {
+          document.getElementById('quota-badge').textContent = `${data.requests_remaining} requests remaining`;
+        }
+
+        renderEventsTable(currentEvents);
+        if (currentEvents.length > 0) {
+          renderBooksChart(currentEvents[0]);
+        }
+      } catch (e) {
+        tableEl.innerHTML = `<div class="empty-state text-red">Error: ${e.message}</div>`;
+      }
+    }
+
+    function renderEventsTable(events) {
+      const el = document.getElementById('events-table');
+      if (!events.length) {
+        el.innerHTML = '<div class="empty-state">No events available for this sport right now.</div>';
+        return;
+      }
+
+      const rows = events.slice(0, 15).map(ev => {
+        const bk = ev.bookmakers?.[0];
+        let spreadStr = '--', mlStr = '--';
+        if (bk) {
+          for (const mkt of bk.markets || []) {
+            if (mkt.key === 'spreads') {
+              const oc = mkt.outcomes || [];
+              spreadStr = oc.map(o => `${o.name} ${o.point > 0 ? '+' : ''}${o.point} (${o.price > 0 ? '+' : ''}${o.price})`).join(' | ');
+            }
+            if (mkt.key === 'h2h' && mlStr === '--') {
+              const oc = mkt.outcomes || [];
+              mlStr = oc.map(o => `${o.name} ${o.price > 0 ? '+' : ''}${o.price}`).join(' | ');
+            }
+          }
+        }
+        const date = ev.commence_time ? new Date(ev.commence_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--';
+        return `
+          <tr style="cursor:pointer" onclick="selectEvent('${ev.id}', '${ev.away_team} @ ${ev.home_team}')">
+            <td>${ev.away_team} @ ${ev.home_team}</td>
+            <td>${date}</td>
+            <td style="font-size:0.82rem;color:var(--text-muted)">${spreadStr}</td>
+            <td style="font-size:0.82rem">${mlStr}</td>
+          </tr>`;
+      }).join('');
+
+      el.innerHTML = `
+        <table>
+          <thead><tr><th>Matchup</th><th>Time</th><th>Spread</th><th>Moneyline</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="text-muted mt-1" style="font-size:0.8rem">Click a row to see book comparison for that event.</div>`;
+    }
+
+    async function selectEvent(eventId, label) {
+      try {
+        const data = await API.odds.best(eventId, 'h2h');
+        renderBooksChart(null, data.best_odds || [], label);
+      } catch (e) {
+        console.error('selectEvent failed', e);
+      }
+    }
+
+    function renderBooksChart(event, bestOdds, label) {
+      const chart = initChart('chart-books');
+      if (!chart) return;
+
+      // If called with raw event, use its first bookmaker
+      if (event && !bestOdds) {
+        const bk = event.bookmakers || [];
+        const entries = [];
+        const homeTeam = event.home_team;
+        const awayTeam = event.away_team;
+
+        for (const b of bk.slice(0, 6)) {
+          for (const mkt of b.markets || []) {
+            if (mkt.key === 'h2h') {
+              for (const o of mkt.outcomes || []) {
+                entries.push({ name: b.key, team: o.name, price: o.price });
+              }
+            }
+          }
+        }
+        label = `${awayTeam} @ ${homeTeam}`;
+        bestOdds = entries;
+      }
+
+      if (!bestOdds || !bestOdds.length) {
+        chart.setOption({ title: { text: 'No data', left: 'center', top: 'middle', textStyle: { color: '#8b949e' } } });
+        return;
+      }
+
+      // Group by team/outcome
+      const teams = [...new Set(bestOdds.map(b => b.outcome_name || b.team))];
+      const books = [...new Set(bestOdds.map(b => b.bookmaker || b.name))];
+
+      const series = teams.map((team, i) => ({
+        name: team,
+        type: 'bar',
+        data: books.map(bk => {
+          const match = bestOdds.find(b => (b.outcome_name || b.team) === team && (b.bookmaker || b.name) === bk);
+          return match ? (match.price || match.odds || 0) : null;
+        }),
+        label: { show: true, position: 'top', formatter: p => p.value != null ? fmtOdds(p.value) : '', fontSize: 10, color: '#c9d1d9' },
+      }));
+
+      chart.setOption({
+        tooltip: { trigger: 'axis' },
+        legend: { top: 0 },
+        title: { text: label || '', textStyle: { fontSize: 11, color: '#8b949e' }, top: -2 },
+        xAxis: { type: 'category', data: books, axisLabel: { fontSize: 10, interval: 0 } },
+        yAxis: { type: 'value', axisLabel: { formatter: v => fmtOdds(v) } },
+        series,
+      });
+    }
+
+    async function loadMovement() {
+      const team = document.getElementById('movement-team').value.trim();
+      if (!team) return;
+      const chart = initChart('chart-movement');
+      if (!chart) return;
+      try {
+        const data = await API.odds.movement(team, 'spreads', 24);
+        const snaps = data.snapshots || [];
+        if (!snaps.length) {
+          chart.setOption({ title: { text: 'No movement data for ' + team, left: 'center', top: 'middle', textStyle: { color: '#8b949e' } } });
+          return;
+        }
+        // Group by bookmaker
+        const byBook = {};
+        for (const s of snaps) {
+          const bk = s.bookmaker || '?';
+          if (!byBook[bk]) byBook[bk] = [];
+          byBook[bk].push([s.fetched_at, s.point || s.price]);
+        }
+        const series = Object.entries(byBook).slice(0, 4).map(([name, pts]) => ({
+          name,
+          type: 'line',
+          data: pts.map(([t, v]) => [new Date(t).getTime(), v]),
+          smooth: true,
+        }));
+        chart.setOption({
+          tooltip: { trigger: 'axis' },
+          legend: { top: 0 },
+          xAxis: { type: 'time' },
+          yAxis: { type: 'value' },
+          series,
+          title: { text: `Line Movement: ${team}`, textStyle: { fontSize: 12, color: '#c9d1d9' } },
+        });
+      } catch (e) {
+        chart.setOption({ title: { text: 'Error: ' + e.message, left: 'center', top: 'middle', textStyle: { color: '#f85149' } } });
+      }
+    }
+  </script>
+</body>
+</html>

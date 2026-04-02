@@ -17,16 +17,16 @@ import os
 from pathlib import Path
 from typing import Any
 
-from openclaw.config import settings
-
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Config loading
 # ---------------------------------------------------------------------------
 
-# Default location comes from settings (AGENTS_CONFIG_PATH env var or /app/agents.json).
-_DEFAULT_CONFIG_PATH = Path(settings.AGENTS_CONFIG_PATH)
+# Default location: agents.json sits next to the openclaw package root.
+# Inside Docker the WORKDIR is /app, so /app/agents.json.
+# Override via env var when running locally or in tests.
+_DEFAULT_CONFIG_PATH = Path(os.environ.get("AGENTS_CONFIG_PATH", "/app/agents.json"))
 
 
 def _load_config(path: Path = _DEFAULT_CONFIG_PATH) -> dict[str, Any]:
@@ -70,12 +70,7 @@ def resolve_agent(sender_id: str) -> str | None:
         _config.get("routing", {}).get("bindings", [])
     )
     for binding in bindings:
-        # Expand any placeholder values (e.g. "DYMANI_ID") via environment variables.
-        expanded = [
-            os.environ.get(v, v) if v.isupper() and v.replace("_", "").isalpha() else v
-            for v in binding.get("from", [])
-        ]
-        if sender_id in expanded:
+        if sender_id in binding.get("from", []):
             return binding["to"]
     return None
 

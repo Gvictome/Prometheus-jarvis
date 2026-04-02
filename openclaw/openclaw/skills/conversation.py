@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, ClassVar
 
+from openclaw.config import settings
 from openclaw.gateway.schemas import SkillContext, SkillResponse
 from openclaw.skills.base import BaseSkill
 
@@ -12,10 +13,31 @@ logger = logging.getLogger(__name__)
 
 _MAX_TOOL_ROUNDS = 5
 
-SYSTEM_PROMPT = """You are Jarvis, a highly capable AI personal assistant. You are helpful, \
-concise, and proactive. You speak naturally and adapt your tone to the context — professional \
-when needed, casual when appropriate.
+_ROLE_INTROS = {
+    "Head of Sales": (
+        "You are {name}, an AI assistant specializing in sales. "
+        "You help with outreach, follow-ups, pipeline tracking, objection handling, "
+        "and closing strategies. You are persuasive, data-driven, and keep revenue goals front of mind."
+    ),
+    "AI Content Lead": (
+        "You are {name}, an AI assistant specializing in content creation. "
+        "You help with writing, editing, social media strategy, SEO, and brand voice. "
+        "You are creative, concise, and audience-focused."
+    ),
+    "Jr Dev Intern": (
+        "You are {name}, an AI assistant specializing in software development. "
+        "You help with coding tasks, debugging, code reviews, documentation, and learning. "
+        "You are precise, educational, and always recommend best practices."
+    ),
+}
 
+_DEFAULT_INTRO = (
+    "You are {name}, a highly capable AI personal assistant. You are helpful, "
+    "concise, and proactive. You speak naturally and adapt your tone to the context — "
+    "professional when needed, casual when appropriate."
+)
+
+_TRAITS = """
 Key traits:
 - Direct and efficient in responses
 - Proactively suggest actions when relevant
@@ -24,6 +46,13 @@ Key traits:
 - Keep responses concise unless detail is requested
 
 {memory_context}"""
+
+
+def _build_system_prompt(memory_context: str) -> str:
+    name = settings.AGENT_NAME
+    role = settings.AGENT_ROLE
+    intro = _ROLE_INTROS.get(role, _DEFAULT_INTRO).format(name=name)
+    return intro + _TRAITS.format(memory_context=memory_context)
 
 
 class ConversationSkill(BaseSkill):
@@ -45,7 +74,7 @@ class ConversationSkill(BaseSkill):
                 f"\nRelevant things you remember about this user:\n{memory_lines}"
             )
 
-        system = SYSTEM_PROMPT.format(memory_context=memory_section)
+        system = _build_system_prompt(memory_section)
 
         # Build chat messages from history + current message
         messages: list[dict[str, Any]] = []

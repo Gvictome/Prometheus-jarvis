@@ -145,13 +145,33 @@ class OverseerScheduler:
             logger.exception("Check-in failed")
 
     async def _send_notification(self, text: str) -> None:
-        """Store a notification for admin users via the SCHEDULER channel."""
+        """Push a notification to admin users via the gateway (if wired) and store it."""
         from openclaw.config import settings
+        from openclaw.gateway.schemas import Channel, MessageType, UnifiedMessage
 
         for admin_id in settings.ADMIN_USER_IDS:
             try:
+                # Persist in conversation history so the admin sees it on next check-in
                 conv_id = f"overseer:{admin_id}"
                 self._store.get_or_create_conversation(conv_id, "scheduler", "overseer")
                 self._store.add_message(conv_id, "assistant", text, "scheduler")
+
+                # Also push via the gateway so Telegram/WhatsApp delivers immediately
+                if self._gateway is not None:
+                    try:
+                        msg = UnifiedMessage(
+                            channel=Channel.API,
+                            sender_id=admin_id,
+                            content=text,
+                            message_type=MessageType.TEXT,
+                            conversation_id=conv_id,
+                            metadata={"source": "overseer_scheduler"},
+                        )
+                        await self._gateway.push_to_admin(admin_id, text)
+                    except AttributeError:
+                        # GatewayRouter may not have push_to_admin — log and skip
+                        logger.debug("GatewayRouter.push_to_admin not available")
+                    except Exception:
+                        logger.exception("Gateway push to admin %s failed", admin_id)
             except Exception:
                 logger.exception("Failed to notify admin %s", admin_id)

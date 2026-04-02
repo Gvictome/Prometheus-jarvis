@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ingest - Signal Intelligence</title>
+  <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+  <nav>
+    <span class="brand">Signal Intelligence</span>
+    <div class="links">
+      <a href="index.html" data-page="dashboard">Dashboard</a>
+      <a href="ingest.html" data-page="ingest" class="active">Ingest</a>
+      <a href="picks.html" data-page="picks">Picks</a>
+      <a href="grading.html" data-page="grading">Grading</a>
+      <a href="sources.html" data-page="sources">Sources</a>
+    </div>
+  </nav>
+  <div class="container">
+    <h1>Ingest Signals</h1>
+    <div class="card">
+      <form onsubmit="handleIngest(event)">
+        <div class="form-group">
+          <label for="ingest-source">Source</label>
+          <select id="ingest-source">
+            <option value="source_b">Source B (structured text)</option>
+            <option value="source_a">Source A (share links)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="ingest-text">Signal Text</label>
+          <textarea id="ingest-text" placeholder="Paste signal text here...&#10;&#10;Examples:&#10;Sabres ML (+115)&#10;Stars ML (-130)&#10;Lightning ML (+100)"></textarea>
+        </div>
+        <button type="submit" id="ingest-btn" class="btn btn-primary">Ingest</button>
+      </form>
+    </div>
+    <div id="ingest-result"></div>
+  </div>
+  <script src="static/js/utils.js"></script>
+  <script src="static/js/api.js"></script>
+  <script src="static/js/ingest.js"></script>
+</body>
+</html>

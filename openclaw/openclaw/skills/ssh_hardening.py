@@ -340,8 +340,8 @@ class SSHHardeningSkill(BaseSkill):
         if not self._overseer:
             return self._error("Overseer not configured.")
 
-        # Look up the approval
-        req = self._overseer._pending_approvals.get(request_id)
+        # Look up the approval via public API
+        req = self._overseer.get_approval(request_id)
         if not req:
             return self._error(f"No approval request found with ID `{request_id}`.")
 
@@ -371,8 +371,8 @@ class SSHHardeningSkill(BaseSkill):
         if change.get("category") == "ssh" and step_id != "restart_sshd":
             await self._run(["cp", "/etc/ssh/sshd_config", "/etc/ssh/sshd_config.bak"])
 
-        # Execute the command
-        self._overseer._store.log_audit(
+        # Execute the command — log via public overseer method
+        self._overseer.log_action(
             user_id=f"ssh_hardening:{sender}",
             action="hardening_applied",
             detail=f"Applying {step_id}: {' '.join(cmd)}",

@@ -48,7 +48,7 @@ class Settings:
     WHATSAPP_BRIDGE_URL: str = _env("WHATSAPP_BRIDGE_URL", "http://whatsapp-bridge:3001")
 
     # ── Voice ────────────────────────────────────────────
-    VOICE_GATEWAY_URL: str = _env("VOICE_GATEWAY_URL", "http://voice-gateway:8001")
+    VOICE_GATEWAY_URL: str = _env("VOICE_GATEWAY_URL", "http://voice-gateway:8000")
     WHISPER_MODEL: str = _env("WHISPER_MODEL", "base")
 
     # ── External Services ────────────────────────────────
@@ -67,16 +67,23 @@ class Settings:
 
     SEARCH_API_KEY: str | None = _env("SEARCH_API_KEY")
     SEARCH_ENGINE_ID: str | None = _env("SEARCH_ENGINE_ID")
+    BRAVE_SEARCH_API_KEY: str | None = _env("BRAVE_SEARCH_API_KEY")
 
-    # ── Agent Config ─────────────────────────────────────
-    AGENTS_CONFIG_PATH: str = _env("AGENTS_CONFIG_PATH", "/app/agents.json")
+    # ── Database ─────────────────────────────────────────
+    DATABASE_URL: str | None = _env("DATABASE_URL")
 
     # ── Redis ────────────────────────────────────────────
     REDIS_URL: str = _env("REDIS_URL", "redis://redis:6379/0")
 
+    # ── Agent Identity ────────────────────────────────────
+    AGENT_NAME: str = _env("AGENT_NAME", "Jarvis")
+    AGENT_ROLE: str = _env("AGENT_ROLE", "")
+
     # ── Security ─────────────────────────────────────────
     ADMIN_USER_IDS: list[str] = json.loads(_env("ADMIN_USER_IDS", "[]"))
+    TRUSTED_USER_IDS: list[str] = json.loads(_env("TRUSTED_USER_IDS", "[]"))
     ADMIN_PIN: str = _env("ADMIN_PIN", "0000")
+    ENABLE_ADMIN_SKILLS: bool = _env("ENABLE_ADMIN_SKILLS", True, bool)
 
     def get_notion_databases(self) -> dict[str, str | None]:
         return {
